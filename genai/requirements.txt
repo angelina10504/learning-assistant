@@ -1,0 +1,56 @@
+pip freeze > requirements.txt
+```
+
+---
+
+## Step 5 — Create the Folder Structure Inside Each Part
+
+**Backend:**
+```
+backend/
+├── controllers/
+├── routes/
+├── models/
+├── middleware/
+├── uploads/          # where PDFs will be saved temporarily
+├── .env
+└── server.js
+```
+
+**GenAI:**
+```
+genai/
+├── routes/
+├── chains/           # all your LangChain chains live here
+├── vectorstore/      # Chroma persistence folder
+├── utils/
+├── .env
+└── main.py
+```
+
+**Frontend:**
+```
+frontend/src/
+├── components/
+├── pages/
+├── services/         # axios API calls
+├── context/          # auth context
+└── App.jsx
+```
+
+---
+
+## Step 6 — Create the .env Files
+
+**backend/.env**
+```
+PORT=5000
+MONGO_URI=your_mongodb_connection_string
+JWT_SECRET=your_secret_key
+GENAI_URL=http://localhost:8000
+```
+
+**genai/.env**
+```
+OPENAI_API_KEY=your_openai_api_key
+CHROMA_PATH=./vectorstore
