@@ -1,0 +1,55 @@
+# ========================
+# Node / MERN
+# ========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+.npm
+
+# ========================
+# Environment Variables
+# ========================
+.env
+.env.local
+.env.development
+.env.production
+*.env
+
+# ========================
+# Python / GenAI
+# ========================
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ========================
+# Chroma Vector Store
+# (contains your embedded data, no need to push)
+# ========================
+genai/vectorstore/
+
+# ========================
+# File Uploads
+# (PDFs uploaded during testing)
+# ========================
+backend/uploads/
+
+# ========================
+# VS Code
+# ========================
+.vscode/
+
+# ========================
+# OS files
+# ========================
+.DS_Store
+Thumbs.db
