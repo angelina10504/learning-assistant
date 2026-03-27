@@ -19,6 +19,19 @@ const userSchema = new mongoose.Schema({
         required: true,
         minlength: 6
     },
+    role: {
+        type: String,
+        enum: ['teacher', 'student'],
+        default: 'student'
+    },
+    classes: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Class'
+    }],
+    enrolledClasses: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Class'
+    }],
     createdAt: {
         type: Date,
         default: Date.now
