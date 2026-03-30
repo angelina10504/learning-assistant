@@ -1,0 +1,324 @@
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Circle,
+  Lock,
+  Clock,
+  Play,
+  BookOpen,
+  Sparkles,
+  Target,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import Navbar from '../../components/shared/Navbar';
+import Badge from '../../components/shared/Badge';
+import ProgressBar from '../../components/shared/ProgressBar';
+import sessionService from '../../services/sessionService';
+
+const StudyPlanView = () => {
+  const { id: planId } = useParams();
+  const navigate = useNavigate();
+  const [plan, setPlan] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [expandedTopic, setExpandedTopic] = useState(null);
+  const [startingSession, setStartingSession] = useState(null);
+
+  useEffect(() => {
+    fetchPlan();
+  }, [planId]);
+
+  const fetchPlan = async () => {
+    try {
+      setLoading(true);
+      const response = await sessionService.getPlanDetails(planId);
+      setPlan(response.data);
+    } catch (err) {
+      console.error('Error fetching plan:', err);
+      toast.error('Failed to load study plan');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartTopic = async (topic, index) => {
+    if (topic.status === 'locked') {
+      toast.error('Complete the previous topic first!');
+      return;
+    }
+    if (topic.status === 'completed') {
+      toast.error('This topic is already completed. You can review it by starting a new session.');
+    }
+
+    setStartingSession(index);
+    try {
+      const classId = plan.classId?._id || plan.classId;
+      const response = await sessionService.startSession(classId, {
+        planId: plan._id || plan.id,
+        topicName: topic.name,
+        topicIndex: index,
+      });
+      const session = response.data;
+      toast.success(`Starting: ${topic.name}`);
+      navigate(`/student/session/${session._id || session.id}`);
+    } catch (err) {
+      console.error('Error starting session:', err);
+      toast.error(err.response?.data?.message || 'Failed to start session');
+    } finally {
+      setStartingSession(null);
+    }
+  };
+
+  const progress = plan
+    ? Math.round((plan.topics.filter(t => t.status === 'completed').length / plan.topics.length) * 100)
+    : 0;
+
+  const completedCount = plan?.topics.filter(t => t.status === 'completed').length || 0;
+  const currentTopic = plan?.topics.find(t => t.status === 'current');
+
+  const getDifficultyColor = (d) => {
+    if (d === 'beginner') return 'green';
+    if (d === 'advanced') return 'red';
+    return 'amber';
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'completed': return <CheckCircle2 className="w-6 h-6 text-green-400" />;
+      case 'current': return <Circle className="w-6 h-6 text-cyan-400 fill-cyan-500" />;
+      default: return <Lock className="w-6 h-6 text-slate-600" />;
+    }
+  };
+
+  const getNodeStyle = (status) => {
+    switch (status) {
+      case 'completed': return 'border-green-500 bg-green-500/10';
+      case 'current': return 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/10';
+      default: return 'border-slate-700 bg-slate-800/50 opacity-60';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900">
+        <Navbar />
+        <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex justify-center py-16">
+            <div className="inline-block w-10 h-10 border-4 border-indigo-400 border-t-white rounded-full animate-spin" />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!plan) {
+    return (
+      <div className="min-h-screen bg-slate-900">
+        <Navbar />
+        <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center">
+          <p className="text-slate-400 mb-4">Plan not found</p>
+          <button onClick={() => navigate('/student/dashboard')} className="btn-primary">
+            Back to Dashboard
+          </button>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-900">
+      <Navbar />
+
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
+          <button
+            onClick={() => {
+              const classId = plan.classId?._id || plan.classId;
+              navigate(`/student/class/${classId}`);
+            }}
+            className="flex items-center gap-2 text-slate-400 hover:text-slate-200 mb-6 transition-colors"
+          >
+            <ArrowLeft size={20} /> Back to Class
+          </button>
+
+          {/* Plan Header Card */}
+          <div className="card p-6 mb-8">
+            <div className="flex flex-col sm:flex-row items-start gap-4">
+              <div className="p-3 bg-indigo-500/10 rounded-xl">
+                <Sparkles className="w-8 h-8 text-indigo-400" />
+              </div>
+              <div className="flex-1">
+                <h1 className="text-2xl font-bold text-slate-50 mb-1">{plan.title}</h1>
+                <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mb-4">
+                  <span className="flex items-center gap-1">
+                    <BookOpen size={14} />
+                    {plan.classId?.name || 'Class'}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Target size={14} />
+                    {plan.topics.length} topics
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Clock size={14} />
+                    ~{plan.totalEstimatedHours}h total
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-300 font-medium">
+                      {completedCount}/{plan.topics.length} completed
+                    </span>
+                    <span className="text-slate-400">{progress}%</span>
+                  </div>
+                  <ProgressBar value={progress} max={100} />
+                </div>
+              </div>
+            </div>
+
+            {plan.completedAt && (
+              <div className="mt-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                <p className="text-green-300 text-sm font-medium flex items-center gap-2">
+                  <CheckCircle2 size={16} />
+                  Plan completed on {new Date(plan.completedAt).toLocaleDateString()}
+                </p>
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Topic Roadmap */}
+        <div className="relative">
+          {/* Vertical timeline line */}
+          <div className="absolute left-7 top-0 bottom-0 w-0.5 bg-gradient-to-b from-cyan-500/50 via-slate-700 to-slate-800" />
+
+          <div className="space-y-4">
+            {plan.topics.map((topic, idx) => {
+              const isExpanded = expandedTopic === idx;
+              const isCurrent = topic.status === 'current';
+              const isClickable = topic.status !== 'locked';
+
+              return (
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.06, duration: 0.4 }}
+                  className="relative pl-16"
+                >
+                  {/* Timeline node */}
+                  <div className={`absolute left-4 top-4 w-7 h-7 rounded-full flex items-center justify-center z-10 bg-slate-900 ${
+                    isCurrent ? 'ring-4 ring-cyan-500/30' : ''
+                  }`}>
+                    {getStatusIcon(topic.status)}
+                  </div>
+
+                  {/* Topic card */}
+                  <div
+                    className={`card p-5 border transition-all duration-200 ${getNodeStyle(topic.status)} ${
+                      isClickable ? 'cursor-pointer hover:border-indigo-500/50' : ''
+                    }`}
+                    onClick={() => isClickable && setExpandedTopic(isExpanded ? null : idx)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="text-xs text-slate-500 font-mono">#{idx + 1}</span>
+                          <h3 className={`font-semibold text-sm ${
+                            topic.status === 'locked' ? 'text-slate-500' : 'text-slate-50'
+                          }`}>
+                            {topic.name}
+                          </h3>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap mt-2">
+                          <Badge color={getDifficultyColor(topic.difficulty)} className="text-xs capitalize">
+                            {topic.difficulty}
+                          </Badge>
+                          <span className="text-xs text-slate-400 flex items-center gap-1">
+                            <Clock size={12} />
+                            {topic.estimatedMinutes} min
+                          </span>
+                          {topic.status === 'completed' && (
+                            <Badge color="green" className="text-xs">Completed</Badge>
+                          )}
+                          {isCurrent && (
+                            <Badge color="cyan" className="text-xs">Up Next</Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {(isCurrent || topic.status === 'completed') && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStartTopic(topic, idx);
+                            }}
+                            disabled={startingSession === idx}
+                            className={`text-xs py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition-colors ${
+                              isCurrent
+                                ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                                : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                            }`}
+                          >
+                            {startingSession === idx ? (
+                              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <Play size={12} />
+                            )}
+                            {isCurrent ? 'Study' : 'Review'}
+                          </button>
+                        )}
+                        {isClickable && (
+                          isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Expanded details */}
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-4 pt-4 border-t border-slate-700/50"
+                      >
+                        {topic.subtopics && topic.subtopics.length > 0 && (
+                          <div className="mb-3">
+                            <p className="text-xs text-slate-400 mb-2 font-medium">Subtopics:</p>
+                            <div className="flex flex-wrap gap-2">
+                              {topic.subtopics.map((sub, sIdx) => (
+                                <span key={sIdx} className="text-xs px-2.5 py-1 bg-slate-700/50 text-slate-300 rounded-full">
+                                  {sub}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {topic.pageRange && topic.pageRange.length === 2 && (
+                          <p className="text-xs text-slate-500">
+                            Pages {topic.pageRange[0]}–{topic.pageRange[1]}
+                          </p>
+                        )}
+                      </motion.div>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default StudyPlanView;

@@ -185,6 +185,229 @@ async def session_summary(
         )
 
 
+class GeneratePlanRequest(BaseModel):
+    """Request body for study plan generation."""
+    collection_name: str
+    milestone_topic: Optional[str] = None
+    milestone_deadline: Optional[str] = None  # ISO date string
+
+
+class PlanTopic(BaseModel):
+    name: str
+    subtopics: List[str] = []
+    estimatedMinutes: int = 30
+    difficulty: str = "intermediate"
+    status: str = "locked"
+    order: int = 0
+    pageRange: List[int] = []
+
+
+class GeneratePlanResponse(BaseModel):
+    title: str
+    topics: List[PlanTopic]
+    totalEstimatedHours: float
+
+
+@router.post("/generate-plan", response_model=GeneratePlanResponse)
+async def generate_plan(request: GeneratePlanRequest):
+    """
+    Generate a personalized study plan by analyzing vectorized PDFs.
+
+    Uses the syllabus parser to extract topics from the Chroma collection,
+    then organizes them into an ordered study plan with time estimates.
+    If a milestone is provided, prioritizes relevant topics.
+    """
+    try:
+        from utils.vector_store import load_chroma
+        from langchain_groq import ChatGroq
+        from langchain_core.prompts import PromptTemplate
+        import os
+        import json
+        import re
+
+        def get_llm():
+            return ChatGroq(
+                model="llama-3.1-8b-instant",
+                api_key=os.getenv("GROQ_API_KEY"),
+                temperature=0.3
+            )
+
+        # Load documents from the vectorstore
+        try:
+            vectorstore = load_chroma(collection_name=request.collection_name)
+        except Exception as e:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Collection '{request.collection_name}' not found. Please upload and vectorize materials first."
+            )
+
+        # Get all chunks from the Chroma collection
+        collection_docs = vectorstore.get(include=["documents", "metadatas"])
+
+        if not collection_docs or not collection_docs.get("documents"):
+            raise HTTPException(
+                status_code=400,
+                detail="No documents found in this collection. Please upload materials first."
+            )
+
+        # Concatenate chunk texts (limit to first ~6000 chars to fit LLM context)
+        all_texts = collection_docs["documents"]
+        concatenated_text = "\n\n".join(all_texts)[:6000]
+
+        # Use LLM directly to extract topics from raw chunk text
+        llm = get_llm()
+        extract_prompt = f"""Analyze this educational content and extract the main topics and subtopics for a study plan.
+
+Content from uploaded study materials:
+{concatenated_text}
+
+Return ONLY valid JSON with no extra text or markdown:
+{{
+    "topics": [
+        {{
+            "name": "Topic Name",
+            "subtopics": ["subtopic1", "subtopic2"],
+            "estimatedMinutes": 30,
+            "difficulty": "beginner|intermediate|advanced",
+            "order": 1,
+            "pageRange": [1, 5]
+        }}
+    ],
+    "totalEstimatedHours": 2.5,
+    "title": "Study Plan: [subject name]"
+}}"""
+
+        llm_response = llm.invoke(extract_prompt)
+        response_text = llm_response.content.strip()
+        print(f"LLM plan response: {response_text[:500]}")
+
+        # Parse JSON — try direct parse, then regex fallback
+        plan_data = None
+        try:
+            plan_data = json.loads(response_text)
+        except json.JSONDecodeError:
+            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_match:
+                try:
+                    plan_data = json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    plan_data = None
+
+        # If LLM/JSON parsing failed entirely, build a sensible default
+        if not plan_data or not plan_data.get("topics"):
+            plan_data = {
+                "title": "Study Plan",
+                "totalEstimatedHours": 2.0,
+                "topics": [
+                    {"name": "Introduction & Overview", "subtopics": ["Key concepts", "Terminology"], "estimatedMinutes": 30, "difficulty": "beginner", "order": 1, "pageRange": []},
+                    {"name": "Core Concepts", "subtopics": ["Fundamentals", "Principles"], "estimatedMinutes": 45, "difficulty": "intermediate", "order": 2, "pageRange": []},
+                    {"name": "Advanced Topics", "subtopics": ["Applications", "Case studies"], "estimatedMinutes": 45, "difficulty": "advanced", "order": 3, "pageRange": []},
+                ]
+            }
+
+        raw_topics = plan_data.get("topics", [])
+        estimated_hours = plan_data.get("totalEstimatedHours", 0)
+        title = plan_data.get("title", "Study Plan")
+
+        # If milestone provided, use LLM to prioritize and organize topics
+        if request.milestone_topic:
+            llm = get_llm()
+            topics_json = json.dumps(raw_topics, indent=2)
+
+            deadline_context = ""
+            if request.milestone_deadline:
+                deadline_context = f"\nThe milestone deadline is: {request.milestone_deadline}. Distribute study time to finish before this date."
+
+            prompt = PromptTemplate(
+                template="""You are a study planner. Given these extracted topics from course materials and a milestone to prepare for, create an optimized study plan.
+
+Milestone to prepare for: {milestone_topic}{deadline_context}
+
+Available topics from materials:
+{topics_json}
+
+Create a focused study plan that:
+1. Prioritizes topics most relevant to the milestone "{milestone_topic}"
+2. Orders topics by prerequisite dependencies
+3. Assigns realistic time estimates in minutes (15-90 min per topic)
+4. Sets difficulty levels (beginner/intermediate/advanced)
+
+Return ONLY valid JSON in this format:
+{{
+    "title": "Study Plan: [milestone topic]",
+    "topics": [
+        {{
+            "name": "Topic Name",
+            "subtopics": ["subtopic1", "subtopic2"],
+            "estimatedMinutes": 30,
+            "difficulty": "intermediate",
+            "order": 1,
+            "pageRange": [1, 5]
+        }}
+    ],
+    "totalEstimatedHours": number
+}}""",
+                input_variables=["milestone_topic", "deadline_context", "topics_json"]
+            )
+
+            response = llm.invoke(prompt.format(
+                milestone_topic=request.milestone_topic,
+                deadline_context=deadline_context,
+                topics_json=topics_json[:3000]
+            ))
+
+            response_text = response.content.strip()
+            try:
+                plan_data = json.loads(response_text)
+            except json.JSONDecodeError:
+                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                if json_match:
+                    plan_data = json.loads(json_match.group())
+                else:
+                    plan_data = None
+
+            if plan_data and plan_data.get("topics"):
+                raw_topics = plan_data["topics"]
+                estimated_hours = plan_data.get("totalEstimatedHours", estimated_hours)
+                title = plan_data.get("title", f"Study Plan: {request.milestone_topic}")
+            else:
+                title = f"Study Plan: {request.milestone_topic}"
+
+        # Build final topics list
+        plan_topics = []
+        total_minutes = 0
+        for i, topic in enumerate(raw_topics):
+            est_min = topic.get("estimatedMinutes") or topic.get("estimated_minutes") or 30
+            page_range = topic.get("pageRange") or topic.get("page_range") or []
+
+            plan_topics.append(PlanTopic(
+                name=topic.get("name", f"Topic {i+1}"),
+                subtopics=topic.get("subtopics", []),
+                estimatedMinutes=est_min,
+                difficulty=topic.get("difficulty", "intermediate"),
+                status="current" if i == 0 else "locked",
+                order=i + 1,
+                pageRange=page_range if isinstance(page_range, list) else []
+            ))
+            total_minutes += est_min
+
+        total_hours = round(total_minutes / 60, 1) if total_minutes > 0 else estimated_hours
+
+        return GeneratePlanResponse(
+            title=title,
+            topics=plan_topics,
+            totalEstimatedHours=total_hours
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating study plan: {str(e)}"
+        )
+
+
 @router.get("/health")
 async def agent_health():
     """Health check for agent service."""

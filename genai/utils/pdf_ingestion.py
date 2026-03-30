@@ -50,9 +50,10 @@ def load_and_split_pdf(file_path: str):
 
     print(f"✅ Split into {len(clean_chunks)} clean chunks")
 
-    print("\n--- Sample Chunk ---")
-    print(clean_chunks[0].page_content)
-    print("\n--- Chunk Metadata ---")
-    print(clean_chunks[0].metadata)
+    if len(clean_chunks) > 0:
+        print("\n--- Sample Chunk ---")
+        print(clean_chunks[0].page_content)
+        print("\n--- Chunk Metadata ---")
+        print(clean_chunks[0].metadata)
 
     return clean_chunks

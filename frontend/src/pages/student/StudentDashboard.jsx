@@ -15,124 +15,62 @@ const StudentDashboard = () => {
   const navigate = useNavigate();
   const [classes, setClasses] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [stats, setStats] = useState(null);
+  const [stats, setStats] = useState({
+    topicsCompleted: { completed: 0, total: 0 },
+    studyHours: 0,
+    currentStreak: 0,
+    avgConfidence: 0,
+  });
+  const [roadmap, setRoadmap] = useState([]);
+  const [weakAreas, setWeakAreas] = useState([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
-  const [loadingSessions, setLoadingSessions] = useState(true);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [joinError, setJoinError] = useState('');
   const [joiningClass, setJoiningClass] = useState(false);
 
-  // Mock stats data
-  const mockStats = {
-    topicsCompleted: { completed: 3, total: 7 },
-    studyHours: 12.5,
-    currentStreak: 5,
-    avgConfidence: 74,
-  };
-
-  // Mock classes data
-  const mockClasses = [
-    {
-      id: '1',
-      name: 'Introduction to Python',
-      teacherName: 'Prof. Alice',
-      progress: 65,
-      type: 'compulsory',
-      deadline: '2026-04-15',
-      enrollment_date: '2026-02-01',
-    },
-    {
-      id: '2',
-      name: 'Web Development',
-      teacherName: 'Prof. Bob',
-      progress: 40,
-      type: 'self-learning',
-      deadline: null,
-      enrollment_date: '2026-03-01',
-    },
-    {
-      id: '3',
-      name: 'Data Science Basics',
-      teacherName: 'Prof. Carol',
-      progress: 85,
-      type: 'compulsory',
-      deadline: '2026-05-30',
-      enrollment_date: '2026-01-15',
-    },
-  ];
-
-  // Mock sessions data
-  const mockSessions = [
-    {
-      id: 'sess_1',
-      topicName: 'Variables and Data Types',
-      classId: '1',
-      className: 'Introduction to Python',
-      sessionNumber: 1,
-      lastContext: 'Completed lesson on basic data types, started practice questions',
-      lastUpdated: new Date(Date.now() - 1000 * 60 * 30),
-      duration: 1800,
-    },
-  ];
-
-  // Mock roadmap data
-  const mockRoadmap = [
-    { name: 'Intro to Python', status: 'completed' },
-    { name: 'Variables & Types', status: 'completed' },
-    { name: 'Control Flow', status: 'completed' },
-    { name: 'Functions', status: 'current' },
-    { name: 'Lists & Tuples', status: 'locked' },
-    { name: 'Dictionaries', status: 'locked' },
-    { name: 'Object-Oriented', status: 'locked' },
-  ];
-
-  // Mock weak areas
-  const mockWeakAreas = [
-    { topic: 'List Comprehensions', topicId: '5' },
-    { topic: 'Error Handling', topicId: '6' },
-  ];
-
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchClasses = async () => {
       try {
         setLoadingClasses(true);
-        // Try to fetch classes from API
-        try {
-          const response = await classService.getEnrolledClasses();
-          const classesData = response.data || mockClasses;
-          // Map _id to id for consistency
-          const mappedClasses = (Array.isArray(classesData) ? classesData : []).map(cls => ({
-            ...cls,
-            id: cls._id || cls.id
-          }));
-          setClasses(mappedClasses);
-        } catch (err) {
-          // Fallback to mock data
-          console.log('Using mock classes data');
-          setClasses(mockClasses);
-        }
+        const response = await classService.getEnrolledClasses();
+        const classesData = response.data || [];
+        const mappedClasses = (Array.isArray(classesData) ? classesData : []).map(cls => ({
+          ...cls,
+          id: cls._id || cls.id,
+          name: cls.name,
+          teacherName: cls.teacherId?.name || 'Instructor',
+          progress: 0, 
+          type: 'compulsory',
+        }));
+        setClasses(mappedClasses);
+      } catch (err) {
+        console.error('Fetch classes error', err);
       } finally {
         setLoadingClasses(false);
       }
+    };
 
+    const fetchDashboard = async () => {
       try {
-        setLoadingSessions(true);
-        // Try to fetch sessions from API
-        try {
-          const response = await sessionService.getSessions();
-          setSessions(response.data || mockSessions);
-        } catch (err) {
-          // Fallback to mock data
-          console.log('Using mock sessions data');
-          setSessions(mockSessions);
+        setLoadingDashboard(true);
+        const response = await sessionService.getDashboardData();
+        const data = response.data;
+        if (data) {
+          if (data.stats) setStats(data.stats);
+          if (data.recentSessions) setSessions(data.recentSessions);
+          if (data.roadmap) setRoadmap(data.roadmap);
+          if (data.weakAreas) setWeakAreas(data.weakAreas);
         }
+      } catch (err) {
+        console.error('Fetch dashboard error', err);
       } finally {
-        setLoadingSessions(false);
+        setLoadingDashboard(false);
       }
     };
 
-    fetchData();
-    setStats(mockStats);
+    fetchClasses();
+    fetchDashboard();
   }, []);
 
   const handleJoinClass = async (classCode) => {
@@ -386,14 +324,14 @@ const StudentDashboard = () => {
             </section>
 
             {/* Weak Areas Section */}
-            {mockWeakAreas.length > 0 && (
+            {weakAreas.length > 0 && (
               <section>
                 <h2 className="text-2xl font-bold text-slate-50 mb-4 flex items-center gap-2">
                   <AlertTriangle className="w-6 h-6 text-amber-500" />
                   Weak Areas
                 </h2>
                 <div className="grid gap-4">
-                  {mockWeakAreas.map((area, idx) => (
+                  {weakAreas.map((area, idx) => (
                     <motion.div
                       key={idx}
                       className="card p-4 border-l-4 border-l-amber-500 bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer"
@@ -425,11 +363,11 @@ const StudentDashboard = () => {
           {/* Right Column - Roadmap */}
           <div className="lg:col-span-1">
             <TopicRoadmap
-              topics={mockRoadmap}
+              topics={roadmap}
               title="Study Roadmap"
               subtitle="Current Course Progress"
             />
-            {mockRoadmap.filter(t => t.status === 'completed').length > 0 && (
+            {roadmap.filter(t => t.status === 'completed').length > 0 && (
               <motion.div
                 className="card p-4 mt-4 bg-green-600/10 border-green-600/30"
                 initial={{ opacity: 0, y: 20 }}
@@ -438,7 +376,7 @@ const StudentDashboard = () => {
               >
                 <p className="text-sm text-green-300">
                   ✓ Keep it up! You're {Math.round(
-                    (mockRoadmap.filter(t => t.status === 'completed').length / mockRoadmap.length) * 100
+                    (roadmap.filter(t => t.status === 'completed').length / roadmap.length) * 100
                   )}% through the course.
                 </p>
               </motion.div>

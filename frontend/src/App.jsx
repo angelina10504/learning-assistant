@@ -7,8 +7,10 @@ import RegisterPage from './pages/auth/RegisterPage';
 import NotFound from './pages/NotFound';
 import TeacherDashboard from './pages/teacher/TeacherDashboard';
 import ClassDetail from './pages/teacher/ClassDetail';
+import StudentClassDetail from './pages/student/ClassDetail';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StudySession from './pages/student/StudySession';
+import StudyPlanView from './pages/student/StudyPlanView';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, requiredRole = null }) => {
@@ -98,6 +100,22 @@ function App() {
         element={
           <ProtectedRoute requiredRole="student">
             <StudentDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/student/class/:id"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <StudentClassDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/student/plan/:id"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <StudyPlanView />
           </ProtectedRoute>
         }
       />

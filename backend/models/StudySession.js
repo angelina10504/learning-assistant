@@ -50,6 +50,19 @@ const studySessionSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Document'
     },
+    planId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'StudyPlan',
+        default: null
+    },
+    topicName: {
+        type: String,
+        default: null
+    },
+    topicIndex: {
+        type: Number,
+        default: null
+    },
     messages: [messageSchema],
     weakTopics: [weakTopicSchema],
     completedTopics: [{

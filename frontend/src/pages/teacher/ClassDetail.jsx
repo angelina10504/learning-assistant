@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Upload, Download, Plus, CheckCircle, Clock, Calendar, FileText, Trash2, Copy } from 'lucide-react';
+import { ArrowLeft, Upload, Download, Plus, CheckCircle, Clock, Calendar, FileText, Trash2, Copy, Cpu } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
@@ -147,6 +147,28 @@ const ClassDetail = () => {
     }
   };
 
+  const handleVectorize = async () => {
+    const toastId = toast.loading('Indexing materials for AI...');
+    try {
+      const response = await classService.vectorizeMaterials(id);
+      const results = response.data.results || [];
+      const successCount = results.filter(r => r.status === 'success').length;
+      const failCount = results.filter(r => r.status === 'failed').length;
+      
+      if (successCount > 0) {
+        toast.success(`Successfully vectorized ${successCount} files for AI!`, { id: toastId });
+      } else if (failCount > 0) {
+        toast.error(`Failed to vectorize ${failCount} files.`, { id: toastId });
+      } else {
+        toast.success(`No materials to vectorize.`, { id: toastId });
+      }
+      fetchData(); // Refresh to show any updated stats if applicable
+    } catch (err) {
+      console.error('Vectorize error:', err);
+      toast.error(err.response?.data?.message || 'Failed to vectorize materials for AI.', { id: toastId });
+    }
+  };
+
   const getConfidenceBadgeColor = (confidence) => {
     if (confidence >= 80) return 'green';
     if (confidence >= 60) return 'amber';
@@ -255,6 +277,12 @@ const ClassDetail = () => {
             </div>
           </div>
           <div className="flex gap-3 w-full sm:w-auto">
+            <button
+              onClick={handleVectorize}
+              className="btn-primary flex-1 sm:flex-none flex items-center justify-center gap-2"
+            >
+              <Cpu size={20} /> Vectorize for AI
+            </button>
             <button
               onClick={() => setShowUploadModal(true)}
               className="btn-secondary flex-1 sm:flex-none flex items-center justify-center gap-2"

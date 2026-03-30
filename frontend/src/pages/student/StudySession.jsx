@@ -13,56 +13,17 @@ const StudySession = () => {
   const navigate = useNavigate();
 
   const [sessionData, setSessionData] = useState(null);
+  const [planTopics, setPlanTopics] = useState([]);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [sessionTime, setSessionTime] = useState(0);
   const [endingSession, setEndingSession] = useState(false);
+  const [autoMessageSent, setAutoMessageSent] = useState(false);
 
   const messagesEndRef = useRef(null);
   const timerRef = useRef(null);
-
-  // Mock session data
-  const mockSessionData = {
-    id: sessionId || 'sess_1',
-    topicName: 'Variables and Data Types',
-    classId: 'class_1',
-    className: 'Introduction to Python',
-    sessionNumber: 1,
-    subtopics: [
-      { name: 'What are variables?', status: 'completed' },
-      { name: 'Naming conventions', status: 'completed' },
-      { name: 'Data types overview', status: 'current' },
-      { name: 'Type conversion', status: 'locked' },
-      { name: 'Common mistakes', status: 'locked' },
-    ],
-    stats: {
-      questionsAsked: 5,
-      correctAnswers: 4,
-      currentConfidence: 72,
-    },
-  };
-
-  // Mock initial messages
-  const mockMessages = [
-    {
-      role: 'ai',
-      content: 'Hello! I\'m your study assistant. Today we\'re learning about **Variables and Data Types** in Python. Let\'s start with the basics.',
-      toolsUsed: [],
-      sources: [],
-      timestamp: new Date(Date.now() - 1000 * 60 * 5),
-    },
-    {
-      role: 'ai',
-      content: 'A variable is a named container that stores a value. Think of it like a labeled box where you can put information. For example:\n```\nname = "Alice"\nage = 25\n```\nHere, `name` and `age` are variables.',
-      toolsUsed: ['retrieve'],
-      sources: [
-        { title: 'Python Variables Documentation', excerpt: 'Variables are containers for storing data values...' }
-      ],
-      timestamp: new Date(Date.now() - 1000 * 60 * 3),
-    },
-  ];
 
   // Scroll to bottom when messages update
   useEffect(() => {
@@ -74,17 +35,61 @@ const StudySession = () => {
     const fetchSessionData = async () => {
       try {
         setLoading(true);
-        try {
-          const response = await sessionService.getSessionDetails(sessionId);
-          setSessionData(response.data);
-          // If API returns messages, use them; otherwise use mock
-          setMessages(response.data.messages || mockMessages);
-        } catch (err) {
-          // Fallback to mock data
-          console.log('Using mock session data');
-          setSessionData(mockSessionData);
-          setMessages(mockMessages);
+        const response = await sessionService.getSessionDetails(sessionId);
+        const apiData = response.data;
+
+        const mappedSessionData = {
+          ...apiData,
+          id: apiData._id || apiData.id,
+          topicName: apiData.topicName || apiData.classId?.name || 'Study Session',
+          className: apiData.classId?.name || 'Unknown Class',
+          planId: apiData.planId?._id || apiData.planId || null,
+          topicIndex: apiData.topicIndex,
+          stats: {
+            questionsAsked: apiData.performanceMetrics?.questionsAnswered || 0,
+            correctAnswers: apiData.performanceMetrics?.correctCount || 0,
+            currentConfidence: Math.round((apiData.performanceMetrics?.avgConfidence || 0) * 100),
+          },
+          weakTopics: apiData.weakTopics || [],
+        };
+
+        setSessionData(mappedSessionData);
+
+        // Load plan topics for sidebar if session has a plan
+        if (apiData.planId) {
+          const planData = typeof apiData.planId === 'object' ? apiData.planId : null;
+          if (planData && planData.topics) {
+            setPlanTopics(planData.topics.map(t => ({
+              name: t.name,
+              status: t.status,
+              subtitle: `${t.estimatedMinutes} min · ${t.difficulty}`,
+            })));
+          } else {
+            // Fetch plan separately
+            try {
+              const planRes = await sessionService.getPlanDetails(apiData.planId);
+              const plan = planRes.data;
+              setPlanTopics(plan.topics.map(t => ({
+                name: t.name,
+                status: t.status,
+                subtitle: `${t.estimatedMinutes} min · ${t.difficulty}`,
+              })));
+            } catch {
+              setPlanTopics([]);
+            }
+          }
         }
+
+        // Set existing messages
+        if (apiData.messages && apiData.messages.length > 0) {
+          setMessages(apiData.messages.map(m => ({
+            ...m,
+            role: m.role === 'human' ? 'user' : m.role,
+          })));
+        }
+      } catch (err) {
+        console.error('Error fetching session:', err);
+        toast.error('Failed to load session');
       } finally {
         setLoading(false);
       }
@@ -93,12 +98,25 @@ const StudySession = () => {
     fetchSessionData();
   }, [sessionId]);
 
+  // Auto-send first message when session loads with no messages
+  useEffect(() => {
+    if (!loading && sessionData && messages.length === 0 && !autoMessageSent) {
+      setAutoMessageSent(true);
+      const topicName = sessionData.topicName;
+      const className = sessionData.className;
+      const autoMessage = topicName && topicName !== className
+        ? `I want to study the topic: ${topicName} from ${className}. Please help me learn this topic using my study materials.`
+        : `I want to start studying ${className}. Please help me learn using my study materials.`;
+
+      sendMessage(autoMessage);
+    }
+  }, [loading, sessionData, messages.length, autoMessageSent]);
+
   // Timer effect
   useEffect(() => {
     timerRef.current = setInterval(() => {
       setSessionTime((prev) => prev + 1);
     }, 1000);
-
     return () => clearInterval(timerRef.current);
   }, []);
 
@@ -108,70 +126,71 @@ const StudySession = () => {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-
-    if (!inputValue.trim()) return;
-
-    // Add user message
+  const sendMessage = async (content) => {
     const userMessage = {
       role: 'user',
-      content: inputValue,
+      content,
       timestamp: new Date(),
     };
+    setMessages((prev) => [...prev, userMessage]);
 
-    setMessages([...messages, userMessage]);
-    setInputValue('');
-
-    // Simulate API call and AI response
     setSending(true);
     try {
-      try {
-        const response = await sessionService.sendMessage(sessionId, inputValue);
-        // Backend returns { message: string, session: object }
-        if (response.data.message) {
-          const aiMessage = {
-            role: 'ai',
-            content: response.data.message,
-            toolsUsed: response.data.session?.messages?.slice(-1)?.[0]?.toolsUsed || [],
-            sources: [],
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, aiMessage]);
-
-          // Update session data with latest from backend
-          if (response.data.session) {
-            setSessionData((prev) => ({
-              ...prev,
-              completedTopics: response.data.session.completedTopics || prev?.completedTopics || [],
-              weakTopics: response.data.session.weakTopics || prev?.weakTopics || [],
-            }));
-          }
-        }
-      } catch (err) {
-        // Mock response for demo
+      const response = await sessionService.sendMessage(sessionId, content);
+      if (response.data.message) {
         const aiMessage = {
           role: 'ai',
-          content: 'That\'s a great question! Let me explain that in more detail...',
-          toolsUsed: ['question'],
+          content: response.data.message,
+          toolsUsed: response.data.session?.messages?.slice(-1)?.[0]?.toolsUsed || [],
           sources: [],
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, aiMessage]);
+
+        // Update session data with latest from backend
+        if (response.data.session) {
+          setSessionData((prev) => ({
+            ...prev,
+            weakTopics: response.data.session.weakTopics || prev?.weakTopics || [],
+            completedTopics: response.data.session.completedTopics || prev?.completedTopics || [],
+            stats: {
+              questionsAsked: response.data.session.performanceMetrics?.questionsAnswered || prev?.stats?.questionsAsked || 0,
+              correctAnswers: response.data.session.performanceMetrics?.correctCount || prev?.stats?.correctAnswers || 0,
+              currentConfidence: Math.round((response.data.session.performanceMetrics?.avgConfidence || 0) * 100),
+            },
+          }));
+        }
       }
+    } catch (err) {
+      console.error('Error sending message:', err);
+      const errorMessage = {
+        role: 'ai',
+        content: 'Sorry, I encountered an error processing your request. Please try again.',
+        toolsUsed: [],
+        sources: [],
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setSending(false);
     }
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!inputValue.trim()) return;
+    const msg = inputValue;
+    setInputValue('');
+    await sendMessage(msg);
   };
 
   const handleQuickAction = (action) => {
     const actions = {
       explain: 'Can you explain that with an example?',
       question: 'Ask me a question about this topic to test my understanding.',
-      next: 'I think I\'m ready to move to the next topic.',
+      next: "I think I'm ready to move to the next topic.",
       summary: 'Can you give me a summary of what we covered?',
     };
-
     setInputValue(actions[action]);
   };
 
@@ -182,10 +201,14 @@ const StudySession = () => {
     try {
       await sessionService.endSession(sessionId);
       toast.success('Session ended!');
-      navigate('/student/dashboard');
+      // Navigate back to plan if we came from one, otherwise dashboard
+      if (sessionData?.planId) {
+        navigate(`/student/plan/${sessionData.planId}`);
+      } else {
+        navigate('/student/dashboard');
+      }
     } catch (err) {
       console.error('Error ending session:', err);
-      // Still navigate even if API call fails
       navigate('/student/dashboard');
     }
   };
@@ -195,9 +218,10 @@ const StudySession = () => {
       <div className="min-h-screen bg-slate-900">
         <Navbar />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex items-center justify-center">
-          <svg className="w-12 h-12 animate-spin text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
+          <div className="text-center">
+            <div className="inline-block w-12 h-12 border-4 border-indigo-400 border-t-white rounded-full animate-spin mb-4" />
+            <p className="text-slate-400">Loading session...</p>
+          </div>
         </main>
       </div>
     );
@@ -227,24 +251,23 @@ const StudySession = () => {
       <div className="bg-slate-800 border-b border-slate-700 sticky top-16 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
-            {/* Left */}
             <div className="flex items-center gap-4">
               <button
-                onClick={() => navigate('/student/dashboard')}
+                onClick={() => {
+                  if (sessionData?.planId) navigate(`/student/plan/${sessionData.planId}`);
+                  else navigate('/student/dashboard');
+                }}
                 className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                title="Back to Dashboard"
+                title="Back"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div>
                 <h1 className="text-lg font-bold text-slate-50">{sessionData.topicName}</h1>
-                <p className="text-xs text-slate-400">
-                  {sessionData.className} • Session {sessionData.sessionNumber}
-                </p>
+                <p className="text-xs text-slate-400">{sessionData.className}</p>
               </div>
             </div>
 
-            {/* Right */}
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 px-3 py-1 bg-slate-700 rounded-lg">
                 <Clock className="w-4 h-4 text-cyan-300" />
@@ -268,9 +291,10 @@ const StudySession = () => {
         <div className="lg:col-span-3 flex flex-col">
           {/* Messages */}
           <div className="flex-1 overflow-y-auto mb-6 space-y-4 pr-2">
-            {messages.length === 0 ? (
+            {messages.length === 0 && !sending ? (
               <div className="text-center py-12">
-                <p className="text-slate-400">No messages yet. Start by asking a question!</p>
+                <div className="inline-block w-8 h-8 border-4 border-indigo-400 border-t-white rounded-full animate-spin mb-3" />
+                <p className="text-slate-400">Preparing your study session...</p>
               </div>
             ) : (
               messages.map((msg, idx) => (
@@ -278,7 +302,7 @@ const StudySession = () => {
                   key={idx}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
+                  transition={{ delay: Math.min(idx * 0.05, 0.5) }}
                 >
                   <ChatMessage message={msg} />
                 </motion.div>
@@ -311,42 +335,23 @@ const StudySession = () => {
           <div className="mb-4 space-y-2">
             <p className="text-xs text-slate-400 px-1">Quick actions:</p>
             <div className="flex flex-wrap gap-2">
-              <motion.button
-                onClick={() => handleQuickAction('explain')}
-                className="px-3 py-1 rounded-full text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors flex items-center gap-1"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <BookOpen className="w-3 h-3" />
-                Explain with example
-              </motion.button>
-              <motion.button
-                onClick={() => handleQuickAction('question')}
-                className="px-3 py-1 rounded-full text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors flex items-center gap-1"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <HelpCircle className="w-3 h-3" />
-                Ask me a question
-              </motion.button>
-              <motion.button
-                onClick={() => handleQuickAction('next')}
-                className="px-3 py-1 rounded-full text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors flex items-center gap-1"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Play className="w-3 h-3" />
-                Next topic
-              </motion.button>
-              <motion.button
-                onClick={() => handleQuickAction('summary')}
-                className="px-3 py-1 rounded-full text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors flex items-center gap-1"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <BarChart3 className="w-3 h-3" />
-                Summarize
-              </motion.button>
+              {[
+                { key: 'explain', icon: BookOpen, label: 'Explain with example' },
+                { key: 'question', icon: HelpCircle, label: 'Ask me a question' },
+                { key: 'next', icon: Play, label: 'Next topic' },
+                { key: 'summary', icon: BarChart3, label: 'Summarize' },
+              ].map(({ key, icon: Icon, label }) => (
+                <motion.button
+                  key={key}
+                  onClick={() => handleQuickAction(key)}
+                  className="px-3 py-1 rounded-full text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors flex items-center gap-1"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Icon className="w-3 h-3" />
+                  {label}
+                </motion.button>
+              ))}
             </div>
           </div>
 
@@ -375,12 +380,14 @@ const StudySession = () => {
 
         {/* Sidebar */}
         <div className="lg:col-span-1 space-y-6">
-          {/* Topic Roadmap */}
-          <TopicRoadmap
-            topics={sessionData.subtopics}
-            title="Topic Breakdown"
-            subtitle={`${sessionData.topicName}`}
-          />
+          {/* Topic Roadmap from Plan */}
+          {planTopics.length > 0 && (
+            <TopicRoadmap
+              topics={planTopics}
+              title="Study Plan Topics"
+              subtitle={sessionData.className}
+            />
+          )}
 
           {/* Session Stats */}
           <motion.div
@@ -391,68 +398,50 @@ const StudySession = () => {
           >
             <h3 className="font-semibold text-slate-50 mb-4">Session Stats</h3>
             <div className="space-y-3">
-              <motion.div
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.25 }}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-slate-400 flex items-center gap-1">
-                    <HelpCircle className="w-3 h-3" />
-                    Questions Asked
-                  </span>
-                  <span className="text-sm font-bold text-slate-50">{sessionData.stats.questionsAsked}</span>
-                </div>
-              </motion.div>
-              <motion.div
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.3 }}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-slate-400 flex items-center gap-1">
-                    <span>✓</span> Correct Answers
-                  </span>
-                  <span className="text-sm font-bold text-green-400">
-                    {sessionData.stats.correctAnswers}/{sessionData.stats.questionsAsked}
-                  </span>
-                </div>
-              </motion.div>
-              <motion.div
-                className="pt-2 border-t border-slate-700/50"
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.35 }}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-400 flex items-center gap-1">
-                    <Lightbulb className="w-3 h-3" />
-                    Confidence
-                  </span>
-                  <span className="text-sm font-bold text-cyan-300">{sessionData.stats.currentConfidence}%</span>
-                </div>
-              </motion.div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <HelpCircle className="w-3 h-3" /> Questions Asked
+                </span>
+                <span className="text-sm font-bold text-slate-50">{sessionData.stats.questionsAsked}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <span>&#10003;</span> Correct Answers
+                </span>
+                <span className="text-sm font-bold text-green-400">
+                  {sessionData.stats.correctAnswers}/{sessionData.stats.questionsAsked}
+                </span>
+              </div>
+              <div className="pt-2 border-t border-slate-700/50 flex items-center justify-between">
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <Lightbulb className="w-3 h-3" /> Confidence
+                </span>
+                <span className="text-sm font-bold text-cyan-300">{sessionData.stats.currentConfidence}%</span>
+              </div>
             </div>
           </motion.div>
 
-          {/* Weak Spot Warning */}
-          <motion.div
-            className="card p-4 bg-amber-600/10 border-amber-600/30"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <h3 className="font-semibold text-slate-50 mb-2 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4" />
-              Weak Spot Detected
-            </h3>
-            <p className="text-xs text-slate-300 mb-3">
-              You seem unsure about type conversion. Would you like extra practice?
-            </p>
-            <button className="btn-primary text-xs w-full">
-              Practice Now
-            </button>
-          </motion.div>
+          {/* Weak Spots — only show if actually detected */}
+          {sessionData.weakTopics && sessionData.weakTopics.length > 0 && (
+            <motion.div
+              className="card p-4 bg-amber-600/10 border-amber-600/30"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
+              <h3 className="font-semibold text-slate-50 mb-2 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                Weak Spots Detected
+              </h3>
+              <div className="space-y-2">
+                {sessionData.weakTopics.map((wt, idx) => (
+                  <p key={idx} className="text-xs text-slate-300">
+                    &bull; {wt.topic}
+                  </p>
+                ))}
+              </div>
+            </motion.div>
+          )}
         </div>
       </main>
     </div>

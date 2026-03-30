@@ -1,5 +1,5 @@
 """
-Agentic Study Planner using LangChain ReAct pattern.
+Agentic Study Planner using LangChain ReAct pattern with robust fallback.
 
 This module implements an intelligent study agent that can:
 - Retrieve information from student notes
@@ -8,7 +8,8 @@ This module implements an intelligent study agent that can:
 - Recommend next topics
 - Summarize learning progress
 
-The agent uses the ReAct (Reasoning + Acting) pattern for interpretability.
+The agent uses the ReAct (Reasoning + Acting) pattern for interpretability,
+with a direct RAG fallback when the agent loop fails.
 """
 
 import os
@@ -35,9 +36,23 @@ load_dotenv()
 def get_llm():
     """Create and return a ChatGroq LLM instance."""
     return ChatGroq(
-        model="llama-3.3-70b-versatile",
+        model="llama-3.1-8b-instant",
         api_key=os.getenv("GROQ_API_KEY"),
         temperature=0.5  # Slightly higher for more creative teaching
+    )
+
+
+def _parsing_error_handler(error) -> str:
+    """Give the agent a clear nudge when it produces malformed output."""
+    return (
+        "I could not parse your last output. You MUST respond in exactly this format:\n"
+        "Thought: <your reasoning>\n"
+        "Action: <tool_name>\n"
+        "Action Input: <input_string>\n\n"
+        "OR if you are ready to answer:\n"
+        "Thought: I now know the final answer\n"
+        "Final Answer: <your answer to the student>\n\n"
+        "Try again."
     )
 
 
@@ -61,83 +76,83 @@ def create_study_agent(vectorstore: Chroma) -> AgentExecutor:
         Tool(
             name="retrieve_from_notes",
             func=retrieve_from_notes.invoke,
-            description=retrieve_from_notes.description or
-                "Search and retrieve relevant content from the student's notes based on a query"
+            description=(
+                "Search and retrieve relevant content from the student's uploaded study materials. "
+                "Input should be a search query string about the topic you want to find."
+            )
         ),
         Tool(
             name="ask_student_question",
             func=ask_student_question.invoke,
-            description=ask_student_question.description or
-                "Generate a comprehension question on a given topic at specified difficulty level"
+            description=(
+                "Generate a comprehension question on a given topic. "
+                "Input should be just the topic name as a string."
+            )
         ),
         Tool(
             name="log_weak_topic",
             func=log_weak_topic.invoke,
-            description=log_weak_topic.description or
-                "Record that a student is struggling with a topic for later review"
+            description=(
+                "Record that a student is struggling with a topic for later review. "
+                "Input should be the topic name as a string."
+            )
         ),
         Tool(
             name="suggest_next_topic",
             func=suggest_next_topic.invoke,
-            description=suggest_next_topic.description or
-                "Recommend the next topic to study based on completed and weak topics"
+            description=(
+                "Recommend the next topic to study. "
+                "Input should be a string like: 'completed: Topic A, Topic B | weak: Topic C'"
+            )
         ),
         Tool(
             name="summarize_progress",
             func=summarize_progress.invoke,
-            description=summarize_progress.description or
-                "Create a summary of the learning session"
+            description=(
+                "Create a summary of the learning session. "
+                "Input should be a string like: 'topics: Topic A, Topic B | minutes: 30'"
+            )
         ),
     ]
 
-    # Define the system prompt for the agent
-    # LangChain's create_react_agent requires: {tools}, {tool_names}, {agent_scratchpad}, {input}
-    system_prompt = PromptTemplate.from_template("""You are an adaptive study planner agent designed to help students learn effectively.
+    system_prompt = PromptTemplate.from_template(
+"""You are an adaptive study tutor for students. Your responses must be SHORT, CLEAR, and ENGAGING.
 
-Your role is to:
-1. Understand what the student wants to learn or review
-2. Retrieve relevant material from their notes using the retrieve_from_notes tool
-3. Ask clarifying or comprehension questions to gauge understanding
-4. Identify areas where the student struggles and log them with log_weak_topic
-5. Recommend next topics strategically using suggest_next_topic
-6. Provide periodic summaries of progress with summarize_progress
+RESPONSE FORMAT RULES (follow strictly):
+- Use **bold** for key terms only
+- Use bullet points (- item) for lists of facts or steps — never long paragraphs
+- Keep each bullet to ONE sentence max
+- If explaining a concept: give a 1-2 sentence summary, then 3-4 bullets MAX
+- If asking a question: ask ONE clear question, keep it short
+- NEVER write walls of text. If your answer exceeds 5 lines, trim it.
+- Use 💡 for tips, ✅ for correct answers, ❓ for questions, 📌 for key facts
 
-Teaching Strategy:
-- Start by understanding what topic the student wants to focus on
-- Retrieve relevant material to refresh their knowledge
-- Ask targeted questions to assess comprehension
-- Be encouraging and adaptive - adjust difficulty based on student responses
-- When a student struggles, log the weak area and suggest related material for review
-- Make learning efficient by building on completed knowledge
+TOOLS:
+- Always use retrieve_from_notes FIRST before answering any topic question
+- Each tool input must be a plain string, NOT a dict or JSON
 
 Student Context:
-- Completed Topics: {completed_topics}
-- Weak Topics (need review): {weak_topics}
-
-Always maintain a supportive tone and break complex topics into digestible pieces.
-Use the tools strategically - don't overuse them. Think about what the student needs most right now.
-
-You have access to the following tools:
+- Completed: {completed_topics}
+- Weak areas: {weak_topics}
 
 {tools}
 
 Tool names: {tool_names}
 
-Use the following format:
+Use EXACTLY this format:
 
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: what I need to do
+Action: tool_name_here
+Action Input: simple string input
+Observation: result
 Thought: I now know the final answer
-Final Answer: the final answer to the original input question
+Final Answer: short, structured response using the format rules above
 
 Begin!
 
 Question: {input}
-Thought:{agent_scratchpad}""")
+Thought:{agent_scratchpad}"""
+    )
 
     # Create the ReAct agent
     agent = create_react_agent(
@@ -150,12 +165,77 @@ Thought:{agent_scratchpad}""")
     executor = AgentExecutor(
         agent=agent,
         tools=tools,
-        verbose=False,  # Set to True for debugging
-        max_iterations=10,  # Prevent infinite loops
-        early_stopping_method="force"  # Stop gracefully if max iterations reached
+        verbose=True,
+        max_iterations=6,
+        early_stopping_method="generate",
+        handle_parsing_errors=_parsing_error_handler,
+        return_intermediate_steps=True
     )
 
     return executor
+
+
+async def _fallback_rag_response(
+    user_message: str,
+    vectorstore: Chroma,
+    student_context: Dict[str, Any]
+) -> Tuple[str, List[str], List[Dict[str, Any]]]:
+    """
+    Direct RAG fallback when the agent loop fails.
+    Retrieves relevant content and generates a response without the agent loop.
+    """
+    try:
+        llm = get_llm()
+
+        # Retrieve relevant documents
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+        docs = retriever.invoke(user_message)
+
+        context = ""
+        if docs:
+            context = "\n\n---\n\n".join(
+                f"From study materials (page {doc.metadata.get('page', '?')}): {doc.page_content}"
+                for doc in docs
+            )
+
+        completed = ", ".join(student_context.get("completed_topics", [])) or "None"
+        weak = ", ".join(student_context.get("weak_topics", [])) or "None"
+
+        prompt = PromptTemplate(
+            template="""You are a helpful study tutor. A student asked the following question/request.
+Use the retrieved study material context below to provide a helpful, educational response.
+
+Student's completed topics: {completed}
+Student's weak topics: {weak}
+
+Retrieved Study Material:
+{context}
+
+Student's message: {question}
+
+Provide a clear, well-structured response using markdown formatting. Include:
+1. An explanation based on the study materials
+2. Key points to remember
+3. If appropriate, a practice question to test understanding
+
+Response:""",
+            input_variables=["question", "context", "completed", "weak"]
+        )
+
+        response = llm.invoke(
+            prompt.format(
+                question=user_message,
+                context=context[:4000] if context else "No study materials found for this query.",
+                completed=completed,
+                weak=weak
+            )
+        )
+
+        tools_used = ["retrieve_from_notes"] if docs else []
+        return response.content.strip(), tools_used, []
+
+    except Exception as e:
+        return f"I'm having trouble accessing your study materials right now. Error: {str(e)}", [], []
 
 
 async def run_agent_chat(
@@ -166,6 +246,7 @@ async def run_agent_chat(
 ) -> Tuple[str, List[str], List[Dict[str, Any]]]:
     """
     Run a single turn of agent-based chat.
+    Falls back to direct RAG if the agent loop fails.
 
     Args:
         user_message: The student's input message
@@ -176,14 +257,14 @@ async def run_agent_chat(
     Returns:
         Tuple of (agent_response, tools_used, extracted_data)
     """
-    try:
-        # Initialize student context if not provided
-        if student_context is None:
-            student_context = {
-                "completed_topics": [],
-                "weak_topics": []
-            }
+    # Initialize student context if not provided
+    if student_context is None:
+        student_context = {
+            "completed_topics": [],
+            "weak_topics": []
+        }
 
+    try:
         # Create the agent
         agent_executor = create_study_agent(vectorstore)
 
@@ -201,7 +282,12 @@ async def run_agent_chat(
             "weak_topics": ", ".join(student_context.get("weak_topics", [])) or "None"
         })
 
-        agent_response = response.get("output", "I encountered an error processing your request.")
+        agent_response = response.get("output", "")
+
+        # Check if the agent actually produced a useful response
+        if not agent_response or "Agent stopped" in agent_response or len(agent_response.strip()) < 20:
+            print("⚠️ Agent produced weak response, falling back to direct RAG")
+            return await _fallback_rag_response(user_message, vectorstore, student_context)
 
         # Extract tools used and any data to be saved
         tools_used = _extract_tools_used(response)
@@ -210,8 +296,8 @@ async def run_agent_chat(
         return agent_response, tools_used, extracted_data
 
     except Exception as e:
-        error_msg = f"Error running agent: {str(e)}"
-        return error_msg, [], []
+        print(f"⚠️ Agent error: {str(e)}, falling back to direct RAG")
+        return await _fallback_rag_response(user_message, vectorstore, student_context)
 
 
 def _prepare_agent_input(

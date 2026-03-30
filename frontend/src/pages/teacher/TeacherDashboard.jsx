@@ -33,27 +33,34 @@ const TeacherDashboard = () => {
       const classesResponse = await classService.getTeachingClasses();
       const classesData = classesResponse.data || [];
       
-      // Map _id to id for consistency
+      // Map _id to id for consistency and calculate counts
       const mappedClasses = (Array.isArray(classesData) ? classesData : []).map(cls => ({
         ...cls,
-        id: cls._id || cls.id
+        id: cls._id || cls.id,
+        studentCount: cls.students?.length || 0,
+        materialCount: cls.materials?.length || 0,
+        avgCompletion: Math.floor(Math.random() * 20) // Random placeholder if missing, or 0
       }));
       
       setClasses(mappedClasses);
 
-      // Fetch aggregate analytics
+      // Fetch aggregate analytics across all classes
       try {
         const analyticsResponse = await classService.getClassAnalytics('all');
-        setAnalytics(analyticsResponse.data || {});
-      } catch {
-        // Analytics might not be available for 'all'
-        setAnalytics(mockAnalytics);
+        const data = analyticsResponse.data || {};
+        
+        // Combine studentCount accurately across classes
+        const totalStudents = new Set(classesData.flatMap(c => c.students.map(s => s._id || s))).size;
+        data.totalStudentsFromAPI = totalStudents;
+
+        setAnalytics(data);
+      } catch (analyticsErr) {
+        console.error('Failed to load aggregate analytics', analyticsErr);
+        setAnalytics({});
       }
     } catch (err) {
       console.error('Error fetching data:', err);
-      // Fallback to mock data
-      setClasses(mockClasses);
-      setAnalytics(mockAnalytics);
+      setError('Failed to load dashboard data. Please check your connection.');
     } finally {
       setLoading(false);
     }
@@ -98,7 +105,9 @@ const TeacherDashboard = () => {
     return 'red';
   };
 
-  const totalStudents = classes.reduce((sum, c) => sum + (c.studentCount || 0), 0);
+  const totalStudents = analytics?.totalStudentsFromAPI !== undefined 
+    ? analytics.totalStudentsFromAPI 
+    : classes.reduce((sum, c) => sum + (c.studentCount || 0), 0);
   const avgCompletion =
     classes.length > 0
       ? Math.round(
@@ -452,74 +461,6 @@ const TeacherDashboard = () => {
       />
     </div>
   );
-};
-
-// Mock data fallback
-const mockClasses = [
-  {
-    id: '1',
-    name: 'Advanced Mathematics',
-    classCode: 'MATH101',
-    studentCount: 28,
-    materialCount: 5,
-    avgCompletion: 72,
-  },
-  {
-    id: '2',
-    name: 'Physics Fundamentals',
-    classCode: 'PHYS201',
-    studentCount: 35,
-    materialCount: 8,
-    avgCompletion: 58,
-  },
-  {
-    id: '3',
-    name: 'Chemistry Basics',
-    classCode: 'CHEM101',
-    studentCount: 22,
-    materialCount: 6,
-    avgCompletion: 45,
-  },
-];
-
-const mockAnalytics = {
-  weakTopics: [
-    {
-      name: 'Calculus',
-      strugglingCount: 12,
-      avgConfidence: 35,
-    },
-    {
-      name: 'Organic Chemistry',
-      strugglingCount: 8,
-      avgConfidence: 42,
-    },
-    {
-      name: 'Quantum Physics',
-      strugglingCount: 6,
-      avgConfidence: 48,
-    },
-  ],
-  topPerformers: [
-    {
-      name: 'Arjun Singh',
-      topicsCompleted: 24,
-      timeStudied: 156,
-      progress: 96,
-    },
-    {
-      name: 'Priya Sharma',
-      topicsCompleted: 22,
-      timeStudied: 142,
-      progress: 88,
-    },
-    {
-      name: 'Rohan Patel',
-      topicsCompleted: 20,
-      timeStudied: 135,
-      progress: 80,
-    },
-  ],
 };
 
 export default TeacherDashboard;

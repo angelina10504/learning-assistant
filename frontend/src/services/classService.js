@@ -45,6 +45,10 @@ const classService = {
     return api.delete(`/classes/${classId}`);
   },
 
+  vectorizeMaterials: (classId) => {
+    return api.post(`/classes/${classId}/vectorize`);
+  },
+
   getClassMaterials: (classId) => {
     return api.get(`/classes/${classId}/materials`);
   },

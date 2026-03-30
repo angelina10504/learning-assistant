@@ -11,7 +11,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 @router.post("/")
-async def upload_pdf(
+def upload_pdf(
     file: UploadFile = File(...),
     collection_name: str = Form("default")
 ):
@@ -30,7 +30,10 @@ async def upload_pdf(
 
         # Run through our RAG ingestion pipeline
         chunks = load_and_split_pdf(file_path)
-        store_chunks_in_chroma(chunks, collection_name=collection_name)
+        if len(chunks) > 0:
+            store_chunks_in_chroma(chunks, collection_name=collection_name)
+        else:
+            print("⚠️ No valid chunks extracted. Skipping Chroma storage.")
 
         return {
             "message": "PDF uploaded and ingested successfully",

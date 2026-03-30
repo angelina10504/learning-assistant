@@ -246,13 +246,17 @@ router.post('/:id/materials', protect, authorize('teacher'), upload.single('file
             formData.append('file', fs.createReadStream(req.file.path))
             formData.append('collection_name', collectionName)
 
-            await axios.post(`${genaiUrl}/upload/`, formData, {
+            const response = await axios.post(`${genaiUrl}/upload/`, formData, {
                 headers: formData.getHeaders(),
                 maxContentLength: 50 * 1024 * 1024,
                 maxBodyLength: 50 * 1024 * 1024,
             })
 
-            console.log(`✅ File vectorized in collection: ${collectionName}`)
+            // Update document with genai stats
+            document.chunksCreated = response.data.chunks_created || 0
+            await document.save()
+
+            console.log(`✅ File vectorized in collection: ${collectionName} with ${document.chunksCreated} chunks.`)
         } catch (genaiErr) {
             console.error('⚠️ GenAI vectorization failed (file saved but not indexed):', genaiErr.message)
             // Don't fail the upload — the document is saved, just not vectorized yet
@@ -265,40 +269,96 @@ router.post('/:id/materials', protect, authorize('teacher'), upload.single('file
     }
 })
 
-// GET /api/classes/:id/analytics - Get aggregated analytics for the class
+// GET /api/classes/:id/analytics - Get aggregated analytics for the class or all classes
 router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => {
     try {
-        const classData = await Class.findById(req.params.id)
-
-        if (!classData) {
-            return res.status(404).json({ message: 'Class not found' })
+        let classIds = []
+        
+        if (req.params.id === 'all') {
+            const classes = await Class.find({ teacherId: req.user._id })
+            classIds = classes.map(c => c._id)
+        } else {
+            const classData = await Class.findById(req.params.id)
+            if (!classData) {
+                return res.status(404).json({ message: 'Class not found' })
+            }
+            if (classData.teacherId.toString() !== req.user._id.toString()) {
+                return res.status(403).json({ message: 'Only class teacher can view analytics' })
+            }
+            classIds = [classData._id]
         }
 
-        if (classData.teacherId.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Only class teacher can view analytics' })
-        }
-
-        // Get all study sessions for this class
-        const sessions = await StudySession.find({ classId: req.params.id })
+        // Get all study sessions for these classes
+        const sessions = await StudySession.find({ classId: { $in: classIds } })
             .populate('studentId', 'name email')
 
-        // Aggregate analytics
+        // Maps for tracking weak topics and student performance
+        const weakTopicsMap = new Map()
+        const studentStatsMap = new Map()
+
+        sessions.forEach(s => {
+            const studentId = s.studentId?._id?.toString()
+            if (!studentId) return
+            
+            // Student stats
+            if (!studentStatsMap.has(studentId)) {
+                studentStatsMap.set(studentId, {
+                    name: s.studentId.name,
+                    topicsCompleted: 0, // approximation from session
+                    timeStudied: 0,     // minutes
+                    progressRaw: 0
+                })
+            }
+            
+            const stats = studentStatsMap.get(studentId)
+            stats.topicsCompleted += s.completedTopics?.length || 0
+            if (s.startedAt && s.endedAt) {
+                stats.timeStudied += Math.round((new Date(s.endedAt) - new Date(s.startedAt)) / 60000)
+            }
+            if (s.performanceMetrics?.avgConfidence) {
+                stats.progressRaw += s.performanceMetrics.avgConfidence * 100
+            }
+
+            // Weak topics
+            if (s.weakTopics && Array.isArray(s.weakTopics)) {
+                s.weakTopics.forEach(wt => {
+                    const tName = wt.topic
+                    if (!weakTopicsMap.has(tName)) {
+                        weakTopicsMap.set(tName, { strugglingCount: 0, confSum: 0, confCount: 0 })
+                    }
+                    const data = weakTopicsMap.get(tName)
+                    data.strugglingCount += 1
+                    if (wt.confidenceScore !== undefined) {
+                        data.confSum += (wt.confidenceScore * 100)
+                        data.confCount += 1
+                    }
+                })
+            }
+        })
+
+        // Process maps to arrays
+        const weakTopics = Array.from(weakTopicsMap.entries()).map(([name, data]) => ({
+            name,
+            strugglingCount: data.strugglingCount,
+            avgConfidence: data.confCount > 0 ? Math.round(data.confSum / data.confCount) : 0
+        })).sort((a, b) => b.strugglingCount - a.strugglingCount) // descending by struggle frequency
+
+        const topPerformers = Array.from(studentStatsMap.values()).map(s => ({
+            name: s.name,
+            topicsCompleted: s.topicsCompleted,
+            timeStudied: s.timeStudied > 60 ? parseFloat((s.timeStudied / 60).toFixed(1)) : 0, // in hours fallback to 0 if small
+            progress: s.topicsCompleted > 0 ? Math.min(100, Math.round(s.progressRaw / s.topicsCompleted)) : 0
+        })).sort((a, b) => b.topicsCompleted - a.topicsCompleted) // sort descending by completion
+
+        // Aggregate core stats
         const analytics = {
             totalSessions: sessions.length,
-            totalStudents: new Set(sessions.map(s => s.studentId._id.toString())).size,
+            totalStudents: new Set(sessions.map(s => s.studentId?._id?.toString()).filter(Boolean)).size,
             averageConfidence: sessions.length > 0
-                ? sessions.reduce((sum, s) => sum + (s.performanceMetrics?.avgConfidence || 0), 0) / sessions.length
+                ? Math.round((sessions.reduce((sum, s) => sum + (s.performanceMetrics?.avgConfidence || 0), 0) / sessions.length) * 100)
                 : 0,
-            totalQuestionsAnswered: sessions.reduce((sum, s) => sum + (s.performanceMetrics?.questionsAnswered || 0), 0),
-            totalCorrect: sessions.reduce((sum, s) => sum + (s.performanceMetrics?.correctCount || 0), 0),
-            studentSessions: sessions.map(s => ({
-                studentId: s.studentId._id,
-                studentName: s.studentId.name,
-                sessionsCount: 1,
-                avgConfidence: s.performanceMetrics?.avgConfidence || 0,
-                questionsAnswered: s.performanceMetrics?.questionsAnswered || 0,
-                correctCount: s.performanceMetrics?.correctCount || 0
-            }))
+            weakTopics,
+            topPerformers
         }
 
         res.json(analytics)
@@ -342,6 +402,73 @@ router.post('/:id/export-csv', protect, authorize('teacher'), async (req, res) =
         res.header('Content-Type', 'text/csv')
         res.header('Content-Disposition', `attachment; filename="class-analytics-${req.params.id}.csv"`)
         res.send(csv)
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
+// POST /api/classes/:id/vectorize - Re-vectorize all materials for a class
+router.post('/:id/vectorize', protect, authorize('teacher'), async (req, res) => {
+    try {
+        const classData = await Class.findById(req.params.id)
+
+        if (!classData) {
+            return res.status(404).json({ message: 'Class not found' })
+        }
+
+        if (classData.teacherId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Only class teacher can vectorize materials' })
+        }
+
+        const materials = await Document.find({ _id: { $in: classData.materials } })
+
+        if (materials.length === 0) {
+            return res.status(400).json({ message: 'No materials to vectorize' })
+        }
+
+        const collectionName = `class_${req.params.id}`
+        const genaiUrl = process.env.GENAI_URL || 'http://localhost:8000'
+        const results = []
+
+        for (const doc of materials) {
+            // Only vectorize PDFs that have a file on disk
+            if (!doc.filePath || !fs.existsSync(doc.filePath)) {
+                results.push({ file: doc.originalName, status: 'skipped', reason: 'File not found on disk' })
+                continue
+            }
+
+            try {
+                const FormData = require('form-data')
+                const formData = new FormData()
+                formData.append('file', fs.createReadStream(doc.filePath))
+                formData.append('collection_name', collectionName)
+
+                const genaiResponse = await axios.post(`${genaiUrl}/upload/`, formData, {
+                    headers: formData.getHeaders(),
+                    maxContentLength: 50 * 1024 * 1024,
+                    maxBodyLength: 50 * 1024 * 1024,
+                })
+
+                // Update document with collection name
+                doc.collectionName = collectionName
+                doc.chunksCreated = genaiResponse.data.chunks_created || 0
+                await doc.save()
+
+                results.push({
+                    file: doc.originalName,
+                    status: 'success',
+                    chunks: genaiResponse.data.chunks_created
+                })
+            } catch (err) {
+                results.push({ file: doc.originalName, status: 'failed', error: err.message })
+            }
+        }
+
+        res.json({
+            message: 'Vectorization complete',
+            collection: collectionName,
+            results
+        })
     } catch (error) {
         res.status(500).json({ message: error.message })
     }
