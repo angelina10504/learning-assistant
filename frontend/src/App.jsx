@@ -1,35 +1,121 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { Navigate, Routes, Route } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Toaster } from 'react-hot-toast';
+import { useAuth } from './context/AuthContext';
+import LoginPage from './pages/auth/LoginPage';
+import RegisterPage from './pages/auth/RegisterPage';
+import NotFound from './pages/NotFound';
+import TeacherDashboard from './pages/teacher/TeacherDashboard';
+import ClassDetail from './pages/teacher/ClassDetail';
+import StudentDashboard from './pages/student/StudentDashboard';
+import StudySession from './pages/student/StudySession';
+
+// Protected Route Component
+const ProtectedRoute = ({ children, requiredRole = null }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block w-12 h-12 border-4 border-indigo-400 border-t-white rounded-full animate-spin mb-4" />
+          <p className="text-slate-300">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (requiredRole && user.role !== requiredRole) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
 
 function App() {
-  const [count, setCount] = useState(0)
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block w-12 h-12 border-4 border-indigo-400 border-t-white rounded-full animate-spin mb-4" />
+          <p className="text-slate-300">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
+      <Toaster position="top-right" />
+      <AnimatePresence mode="wait">
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+
+      {/* Home redirect */}
+      <Route
+        path="/"
+        element={
+          user ? (
+            <Navigate
+              to={user.role === 'teacher' ? '/teacher/dashboard' : '/student/dashboard'}
+              replace
+            />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+
+      {/* Teacher routes */}
+      <Route
+        path="/teacher/dashboard"
+        element={
+          <ProtectedRoute requiredRole="teacher">
+            <TeacherDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/teacher/class/:id"
+        element={
+          <ProtectedRoute requiredRole="teacher">
+            <ClassDetail />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Student routes */}
+      <Route
+        path="/student/dashboard"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <StudentDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/student/session/:id"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <StudySession />
+          </ProtectedRoute>
+        }
+      />
+
+        {/* 404 route */}
+        <Route path="*" element={<NotFound />} />
+        </Routes>
+      </AnimatePresence>
     </>
-  )
+  );
 }
 
-export default App
+export default App;

@@ -1,6 +1,40 @@
 const express = require('express')
 const router = express.Router()
 const axios = require('axios')
+const multer = require('multer')
+const path = require('path')
+const fs = require('fs')
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = path.join(__dirname, '../uploads')
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true })
+        }
+        cb(null, uploadDir)
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+        cb(null, uniqueSuffix + '-' + file.originalname)
+    }
+})
+
+const upload = multer({
+    storage,
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /pdf|doc|docx|txt|ppt|pptx/
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase())
+        const mimetype = allowedTypes.test(file.mimetype)
+        
+        if (extname && mimetype) {
+            return cb(null, true)
+        }
+        cb(new Error('Only document files are allowed (PDF, DOC, DOCX, TXT, PPT, PPTX)'))
+    }
+})
+
 // Simple CSV generator (no external dependency)
 const generateCSV = (data) => {
     if (!data || data.length === 0) return ''
@@ -170,7 +204,7 @@ router.get('/:id/materials', protect, async (req, res) => {
 })
 
 // POST /api/classes/:id/materials - Upload material to class
-router.post('/:id/materials', protect, authorize('teacher'), async (req, res) => {
+router.post('/:id/materials', protect, authorize('teacher'), upload.single('file'), async (req, res) => {
     try {
         const classData = await Class.findById(req.params.id)
 
@@ -182,36 +216,27 @@ router.post('/:id/materials', protect, authorize('teacher'), async (req, res) =>
             return res.status(403).json({ message: 'Only class teacher can upload materials' })
         }
 
-        // Proxy to GenAI service - forward file upload
-        const genaiUrl = process.env.GENAI_URL || 'http://localhost:8000'
-
-        // Forward the request to GenAI /upload/ endpoint
-        try {
-            const response = await axios.post(`${genaiUrl}/upload/`, req.body, {
-                headers: req.headers
-            })
-
-            // Extract document info from GenAI response
-            const { documentId, filename, originalName, collectionName, chunksCreated } = response.data
-
-            // Create document in our DB
-            const document = await Document.create({
-                userId: req.user._id,
-                filename,
-                originalName,
-                collectionName,
-                chunksCreated
-            })
-
-            // Add to class materials
-            classData.materials.push(document._id)
-            await classData.save()
-
-            res.status(201).json(document)
-        } catch (error) {
-            res.status(500).json({ message: `GenAI service error: ${error.message}` })
+        if (!req.file) {
+            return res.status(400).json({ message: 'No file uploaded' })
         }
+
+        // Create document in our DB
+        const document = await Document.create({
+            userId: req.user._id,
+            filename: req.file.filename,
+            originalName: req.file.originalname,
+            filePath: req.file.path,
+            fileSize: req.file.size,
+            mimeType: req.file.mimetype
+        })
+
+        // Add to class materials
+        classData.materials.push(document._id)
+        await classData.save()
+
+        res.status(201).json(document)
     } catch (error) {
+        console.error('Upload error:', error)
         res.status(500).json({ message: error.message })
     }
 })
@@ -293,6 +318,126 @@ router.post('/:id/export-csv', protect, authorize('teacher'), async (req, res) =
         res.header('Content-Type', 'text/csv')
         res.header('Content-Disposition', `attachment; filename="class-analytics-${req.params.id}.csv"`)
         res.send(csv)
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
+// DELETE /api/classes/:id - Delete class (teacher only)
+router.delete('/:id', protect, authorize('teacher'), async (req, res) => {
+    try {
+        const classData = await Class.findById(req.params.id)
+
+        if (!classData) {
+            return res.status(404).json({ message: 'Class not found' })
+        }
+
+        if (classData.teacherId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Only class teacher can delete this class' })
+        }
+
+        // Remove class from all enrolled students
+        await User.updateMany(
+            { enrolledClasses: classData._id },
+            { $pull: { enrolledClasses: classData._id } }
+        )
+
+        // Remove class from teacher's classes
+        await User.findByIdAndUpdate(
+            req.user._id,
+            { $pull: { classes: classData._id } }
+        )
+
+        // Delete associated study sessions
+        await StudySession.deleteMany({ classId: classData._id })
+
+        // Delete the class
+        await Class.findByIdAndDelete(req.params.id)
+
+        res.json({ message: 'Class deleted successfully' })
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
+// POST /api/classes/:id/milestones - Add milestone to class
+router.post('/:id/milestones', protect, authorize('teacher'), async (req, res) => {
+    try {
+        const classData = await Class.findById(req.params.id)
+
+        if (!classData) {
+            return res.status(404).json({ message: 'Class not found' })
+        }
+
+        if (classData.teacherId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Only class teacher can add milestones' })
+        }
+
+        const { topic, deadline, isCompulsory } = req.body
+
+        if (!topic || !deadline) {
+            return res.status(400).json({ message: 'Topic and deadline are required' })
+        }
+
+        const milestone = {
+            topic,
+            deadline: new Date(deadline),
+            isCompulsory: isCompulsory !== undefined ? isCompulsory : true
+        }
+
+        classData.milestones.push(milestone)
+        classData.updatedAt = Date.now()
+        await classData.save()
+
+        res.status(201).json(classData.milestones[classData.milestones.length - 1])
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
+// GET /api/classes/:id/milestones - Get milestones for a class
+router.get('/:id/milestones', protect, async (req, res) => {
+    try {
+        const classData = await Class.findById(req.params.id)
+
+        if (!classData) {
+            return res.status(404).json({ message: 'Class not found' })
+        }
+
+        // Check authorization
+        const isTeacher = classData.teacherId.toString() === req.user._id.toString()
+        const isStudent = classData.students.includes(req.user._id)
+
+        if (!isTeacher && !isStudent) {
+            return res.status(403).json({ message: 'Not authorized' })
+        }
+
+        res.json(classData.milestones)
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
+// DELETE /api/classes/:id/milestones/:milestoneId - Delete a milestone
+router.delete('/:id/milestones/:milestoneId', protect, authorize('teacher'), async (req, res) => {
+    try {
+        const classData = await Class.findById(req.params.id)
+
+        if (!classData) {
+            return res.status(404).json({ message: 'Class not found' })
+        }
+
+        if (classData.teacherId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Only class teacher can delete milestones' })
+        }
+
+        classData.milestones = classData.milestones.filter(
+            m => m._id.toString() !== req.params.milestoneId
+        )
+        classData.updatedAt = Date.now()
+        await classData.save()
+
+        res.json({ message: 'Milestone deleted successfully' })
     } catch (error) {
         res.status(500).json({ message: error.message })
     }

@@ -1,5 +1,25 @@
 const mongoose = require('mongoose')
 
+const milestoneSchema = new mongoose.Schema({
+    topic: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    deadline: {
+        type: Date,
+        required: true
+    },
+    isCompulsory: {
+        type: Boolean,
+        default: true
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
+    }
+})
+
 const classSchema = new mongoose.Schema({
     teacherId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -29,6 +49,7 @@ const classSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Document'
     }],
+    milestones: [milestoneSchema],
     createdAt: {
         type: Date,
         default: Date.now

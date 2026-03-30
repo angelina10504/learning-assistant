@@ -8,10 +8,11 @@ connectDB()
 
 const app = express()
 
-// CORS configuration for Vite frontend (port 5173) and development
+// CORS configuration for Vite frontend (port 5173, 5174) and development
 app.use(cors({
     origin: [
         'http://localhost:5173',
+        'http://localhost:5174',
         'http://localhost:5000',
         'http://localhost:3000'
     ],

@@ -14,10 +14,18 @@ const documentSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    // Each user gets their own Chroma collection
+    filePath: {
+        type: String
+    },
+    fileSize: {
+        type: Number
+    },
+    mimeType: {
+        type: String
+    },
+    // Each user gets their own Chroma collection (optional for GenAI integration)
     collectionName: {
-        type: String,
-        required: true
+        type: String
     },
     chunksCreated: {
         type: Number,
