@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { BookOpen, Clock, Flame, Lightbulb, BookMarked, GraduationCap, Pin, AlertTriangle, Plus } from 'lucide-react';
+import { BookOpen, Clock, Flame, Lightbulb, BookMarked, GraduationCap, Pin, AlertTriangle, Plus, Play } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Navbar from '../../components/shared/Navbar';
 import ProgressBar from '../../components/shared/ProgressBar';
@@ -174,6 +174,18 @@ const StudentDashboard = () => {
     navigate(`/student/session/${sessionId}`);
   };
 
+  const startNewSession = async (classId) => {
+    try {
+      const response = await sessionService.startSession(classId);
+      const newSession = response.data;
+      toast.success('Study session started!');
+      navigate(`/student/session/${newSession._id || newSession.id}`);
+    } catch (err) {
+      console.error('Start session error:', err);
+      toast.error(err.response?.data?.message || 'Failed to start session');
+    }
+  };
+
   const openClassMaterials = (classId) => {
     navigate(`/student/class/${classId}`);
   };
@@ -314,14 +326,13 @@ const StudentDashboard = () => {
                   {classes.map((cls, idx) => (
                     <motion.div
                       key={cls.id}
-                      className="card p-5 cursor-pointer hover:bg-slate-700/50 transition-colors"
-                      onClick={() => openClassMaterials(cls.id)}
+                      className="card p-5 hover:bg-slate-700/50 transition-colors"
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.1 }}
                     >
                       <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
+                        <div className="flex-1 cursor-pointer" onClick={() => openClassMaterials(cls.id)}>
                           <h3 className="font-semibold text-slate-50 mb-1">{cls.name}</h3>
                           <p className="text-sm text-slate-400 flex items-center gap-1">
                             <GraduationCap className="w-4 h-4" />
@@ -357,6 +368,17 @@ const StudentDashboard = () => {
                           )}
                         </div>
                       </div>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startNewSession(cls.id);
+                        }}
+                        className="btn-primary text-sm w-full flex items-center justify-center gap-2"
+                      >
+                        <Play className="w-4 h-4" />
+                        Start Study Session
+                      </button>
                     </motion.div>
                   ))}
                 </div>

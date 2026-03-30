@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Clock, BookOpen, HelpCircle, Play, BarChart3, AlertTriangle, Send } from 'lucide-react';
+import { ArrowLeft, Clock, BookOpen, HelpCircle, Play, BarChart3, AlertTriangle, Send, Lightbulb } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Navbar from '../../components/shared/Navbar';
 import ChatMessage from '../../components/student/ChatMessage';
@@ -9,7 +9,7 @@ import TopicRoadmap from '../../components/student/TopicRoadmap';
 import sessionService from '../../services/sessionService';
 
 const StudySession = () => {
-  const { sessionId } = useParams();
+  const { id: sessionId } = useParams();
   const navigate = useNavigate();
 
   const [sessionData, setSessionData] = useState(null);
@@ -128,9 +128,25 @@ const StudySession = () => {
     try {
       try {
         const response = await sessionService.sendMessage(sessionId, inputValue);
-        // API should return an AI message
+        // Backend returns { message: string, session: object }
         if (response.data.message) {
-          setMessages((prev) => [...prev, response.data.message]);
+          const aiMessage = {
+            role: 'ai',
+            content: response.data.message,
+            toolsUsed: response.data.session?.messages?.slice(-1)?.[0]?.toolsUsed || [],
+            sources: [],
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, aiMessage]);
+
+          // Update session data with latest from backend
+          if (response.data.session) {
+            setSessionData((prev) => ({
+              ...prev,
+              completedTopics: response.data.session.completedTopics || prev?.completedTopics || [],
+              weakTopics: response.data.session.weakTopics || prev?.weakTopics || [],
+            }));
+          }
         }
       } catch (err) {
         // Mock response for demo

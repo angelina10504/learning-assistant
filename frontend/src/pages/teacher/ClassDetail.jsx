@@ -11,6 +11,7 @@ import ProgressBar from '../../components/shared/ProgressBar';
 import classService from '../../services/classService';
 import UploadMaterialModal from './UploadMaterialModal';
 import AddMilestoneModal from './AddMilestoneModal';
+import EditMilestoneModal from './EditMilestoneModal';
 
 const ClassDetail = () => {
   const { id } = useParams();
@@ -24,6 +25,8 @@ const ClassDetail = () => {
   const [error, setError] = useState(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showMilestoneModal, setShowMilestoneModal] = useState(false);
+  const [showEditMilestoneModal, setShowEditMilestoneModal] = useState(false);
+  const [selectedMilestone, setSelectedMilestone] = useState(null);
   const [sortBy, setSortBy] = useState('progress');
 
   useEffect(() => {
@@ -93,6 +96,17 @@ const ClassDetail = () => {
   const handleMilestoneAdded = () => {
     fetchData();
     toast.success('Milestone added successfully!');
+  };
+
+  const handleMilestoneClick = (milestone) => {
+    setSelectedMilestone(milestone);
+    setShowEditMilestoneModal(true);
+  };
+
+  const handleMilestoneUpdated = () => {
+    fetchData();
+    setShowEditMilestoneModal(false);
+    setSelectedMilestone(null);
   };
 
   const handleExportCSV = async () => {
@@ -305,7 +319,8 @@ const ClassDetail = () => {
                     key={milestone.id}
                     variants={itemVariants}
                     whileHover={{ y: -2 }}
-                    className="card p-4 flex-shrink-0 min-w-0"
+                    onClick={() => handleMilestoneClick(milestone)}
+                    className="card p-4 flex-shrink-0 min-w-0 cursor-pointer hover:border-indigo-500/50 transition-colors"
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
@@ -558,6 +573,17 @@ const ClassDetail = () => {
         onClose={() => setShowMilestoneModal(false)}
         classId={id}
         onAdded={handleMilestoneAdded}
+      />
+
+      <EditMilestoneModal
+        isOpen={showEditMilestoneModal}
+        onClose={() => {
+          setShowEditMilestoneModal(false);
+          setSelectedMilestone(null);
+        }}
+        classId={id}
+        milestone={selectedMilestone}
+        onUpdated={handleMilestoneUpdated}
       />
     </div>
   );

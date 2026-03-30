@@ -220,6 +220,9 @@ router.post('/:id/materials', protect, authorize('teacher'), upload.single('file
             return res.status(400).json({ message: 'No file uploaded' })
         }
 
+        // Use classId as collection name so all materials in a class share a vector store
+        const collectionName = `class_${req.params.id}`
+
         // Create document in our DB
         const document = await Document.create({
             userId: req.user._id,
@@ -227,12 +230,33 @@ router.post('/:id/materials', protect, authorize('teacher'), upload.single('file
             originalName: req.file.originalname,
             filePath: req.file.path,
             fileSize: req.file.size,
-            mimeType: req.file.mimetype
+            mimeType: req.file.mimetype,
+            collectionName
         })
 
         // Add to class materials
         classData.materials.push(document._id)
         await classData.save()
+
+        // Send file to GenAI service for vectorization
+        const genaiUrl = process.env.GENAI_URL || 'http://localhost:8000'
+        try {
+            const FormData = require('form-data')
+            const formData = new FormData()
+            formData.append('file', fs.createReadStream(req.file.path))
+            formData.append('collection_name', collectionName)
+
+            await axios.post(`${genaiUrl}/upload/`, formData, {
+                headers: formData.getHeaders(),
+                maxContentLength: 50 * 1024 * 1024,
+                maxBodyLength: 50 * 1024 * 1024,
+            })
+
+            console.log(`✅ File vectorized in collection: ${collectionName}`)
+        } catch (genaiErr) {
+            console.error('⚠️ GenAI vectorization failed (file saved but not indexed):', genaiErr.message)
+            // Don't fail the upload — the document is saved, just not vectorized yet
+        }
 
         res.status(201).json(document)
     } catch (error) {
@@ -438,6 +462,40 @@ router.delete('/:id/milestones/:milestoneId', protect, authorize('teacher'), asy
         await classData.save()
 
         res.json({ message: 'Milestone deleted successfully' })
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
+// PUT /api/classes/:id/milestones/:milestoneId - Update a milestone
+router.put('/:id/milestones/:milestoneId', protect, authorize('teacher'), async (req, res) => {
+    try {
+        const classData = await Class.findById(req.params.id)
+
+        if (!classData) {
+            return res.status(404).json({ message: 'Class not found' })
+        }
+
+        if (classData.teacherId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Only class teacher can update milestones' })
+        }
+
+        const milestone = classData.milestones.id(req.params.milestoneId)
+
+        if (!milestone) {
+            return res.status(404).json({ message: 'Milestone not found' })
+        }
+
+        const { topic, deadline, isCompulsory } = req.body
+
+        if (topic) milestone.topic = topic
+        if (deadline) milestone.deadline = new Date(deadline)
+        if (isCompulsory !== undefined) milestone.isCompulsory = isCompulsory
+
+        classData.updatedAt = Date.now()
+        await classData.save()
+
+        res.json(milestone)
     } catch (error) {
         res.status(500).json({ message: error.message })
     }

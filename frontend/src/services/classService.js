@@ -36,7 +36,7 @@ const classService = {
   },
 
   exportCSV: (classId) => {
-    return api.get(`/classes/${classId}/export`, {
+    return api.post(`/classes/${classId}/export-csv`, {}, {
       responseType: 'blob',
     });
   },
@@ -59,6 +59,10 @@ const classService = {
 
   deleteMilestone: (classId, milestoneId) => {
     return api.delete(`/classes/${classId}/milestones/${milestoneId}`);
+  },
+
+  updateMilestone: (classId, milestoneId, topic, deadline, isCompulsory) => {
+    return api.put(`/classes/${classId}/milestones/${milestoneId}`, { topic, deadline, isCompulsory });
   },
 };
 

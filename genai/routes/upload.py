@@ -1,6 +1,6 @@
 import os
 import shutil
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from utils.pdf_ingestion import load_and_split_pdf
 from utils.vector_store import store_chunks_in_chroma
 
@@ -13,7 +13,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 @router.post("/")
 async def upload_pdf(
     file: UploadFile = File(...),
-    collection_name: str = "default"
+    collection_name: str = Form("default")
 ):
     # Validate file type
     if not file.filename.endswith(".pdf"):

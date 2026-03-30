@@ -91,6 +91,7 @@ def create_study_agent(vectorstore: Chroma) -> AgentExecutor:
     ]
 
     # Define the system prompt for the agent
+    # LangChain's create_react_agent requires: {tools}, {tool_names}, {agent_scratchpad}, {input}
     system_prompt = PromptTemplate.from_template("""You are an adaptive study planner agent designed to help students learn effectively.
 
 Your role is to:
@@ -116,7 +117,27 @@ Student Context:
 Always maintain a supportive tone and break complex topics into digestible pieces.
 Use the tools strategically - don't overuse them. Think about what the student needs most right now.
 
-Begin by acknowledging the student's learning goals and asking clarifying questions before diving into content.""")
+You have access to the following tools:
+
+{tools}
+
+Tool names: {tool_names}
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Begin!
+
+Question: {input}
+Thought:{agent_scratchpad}""")
 
     # Create the ReAct agent
     agent = create_react_agent(

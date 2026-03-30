@@ -91,8 +91,9 @@ router.post('/:id/message', protect, authorize('student'), async (req, res) => {
         const genaiUrl = process.env.GENAI_URL || 'http://localhost:8000'
 
         try {
-            // Get document collection name for vector store lookup
-            let collectionName = 'default'
+            // Get collection name for vector store lookup
+            // Use class-level collection (all materials in a class share one vector store)
+            let collectionName = `class_${session.classId}`
             if (session.documentId) {
                 const doc = await Document.findById(session.documentId)
                 if (doc && doc.collectionName) {
