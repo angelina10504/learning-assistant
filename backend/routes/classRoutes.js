@@ -269,6 +269,32 @@ router.post('/:id/materials', protect, authorize('teacher'), upload.single('file
     }
 })
 
+// Helper logic for calculating exact active interaction time based on AI interaction
+function calculateActiveDuration(session) {
+    if (session.messages && session.messages.length > 0) {
+        let activeMs = 2 * 60 * 1000 // base 2 mins
+        for (let i = 1; i < session.messages.length; i++) {
+            const t1 = new Date(session.messages[i-1].timestamp)
+            const t2 = new Date(session.messages[i].timestamp)
+            const diff = t2 - t1
+            if (diff > 0 && diff < 15 * 60 * 1000) { // 15 mins max gap
+                activeMs += diff
+            } else if (diff > 0) {
+                activeMs += 2 * 60 * 1000 // new 2 min block if gap is big
+            }
+        }
+        return activeMs
+    }
+    
+    // Fallback if no messages but startedAt exists (e.g., immediate abort)
+    if (session.startedAt) {
+        const ended = session.endedAt || new Date()
+        const diff = ended - new Date(session.startedAt)
+        return (diff > 0 && diff < 5 * 60 * 1000) ? diff : 0
+    }
+    return 0
+}
+
 // GET /api/classes/:id/analytics - Get aggregated analytics for the class or all classes
 router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => {
     try {
@@ -312,9 +338,10 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
             
             const stats = studentStatsMap.get(studentId)
             stats.topicsCompleted += s.completedTopics?.length || 0
-            if (s.startedAt && s.endedAt) {
-                stats.timeStudied += Math.round((new Date(s.endedAt) - new Date(s.startedAt)) / 60000)
-            }
+            
+            // Add interaction-based study duration
+            stats.timeStudied += Math.round(calculateActiveDuration(s) / 60000)
+            
             if (s.performanceMetrics?.avgConfidence) {
                 stats.progressRaw += s.performanceMetrics.avgConfidence * 100
             }

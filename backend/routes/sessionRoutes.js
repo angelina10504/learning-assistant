@@ -8,6 +8,32 @@ const StudyPlan = require('../models/StudyPlan')
 const Class = require('../models/Class')
 const Document = require('../models/Document')
 
+// Helper logic for calculating exact active interaction time based on AI interaction
+function calculateActiveDuration(session) {
+    if (session.messages && session.messages.length > 0) {
+        let activeMs = 2 * 60 * 1000 // base 2 mins
+        for (let i = 1; i < session.messages.length; i++) {
+            const t1 = new Date(session.messages[i-1].timestamp)
+            const t2 = new Date(session.messages[i].timestamp)
+            const diff = t2 - t1
+            if (diff > 0 && diff < 15 * 60 * 1000) { // 15 mins max gap
+                activeMs += diff
+            } else if (diff > 0) {
+                activeMs += 2 * 60 * 1000 // new 2 min block if gap is big
+            }
+        }
+        return activeMs
+    }
+    
+    // Fallback if no messages but startedAt exists (e.g., immediate abort)
+    if (session.startedAt) {
+        const ended = session.endedAt || new Date()
+        const diff = ended - new Date(session.startedAt)
+        return (diff > 0 && diff < 5 * 60 * 1000) ? diff : 0
+    }
+    return 0
+}
+
 // GET /api/sessions/dashboard - Get dashboard stats for student
 router.get('/dashboard', protect, authorize('student'), async (req, res) => {
     try {
@@ -36,18 +62,15 @@ router.get('/dashboard', protect, authorize('student'), async (req, res) => {
                 sessionNumber: allSessions.length - i,
                 lastContext: lastMessage,
                 lastUpdated: s.endedAt || s.startedAt,
-                duration: s.endedAt ? (new Date(s.endedAt) - new Date(s.startedAt)) / 1000 : 0
+                duration: calculateActiveDuration(s) / 1000 // converting to seconds for UI
             }
         })
 
         allSessions.forEach(session => {
-            // Study hours limit logic
+            // Study hours derived from actual AI interaction 
+            totalMs += calculateActiveDuration(session)
+            
             if (session.startedAt) {
-                const ended = session.endedAt || new Date()
-                const duration = new Date(ended) - new Date(session.startedAt)
-                if (duration > 0 && duration < 8 * 60 * 60 * 1000) { // arbitrary cap 8h
-                    totalMs += duration
-                }
                 activeDates.add(new Date(session.startedAt).toISOString().split('T')[0])
             }
             
