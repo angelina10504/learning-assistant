@@ -71,6 +71,12 @@ const classService = {
   getMasteryHeatmap: (classId) => {
     return api.get(`/classes/${classId}/mastery-heatmap`);
   },
+
+  getMaterialPreview: (classId, materialId) => {
+    return api.get(`/classes/${classId}/materials/${materialId}/preview`, {
+      responseType: 'blob'
+    });
+  },
 };
 
 export default classService;

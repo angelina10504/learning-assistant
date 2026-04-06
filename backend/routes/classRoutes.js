@@ -327,6 +327,38 @@ router.get('/:id/materials', protect, async (req, res) => {
     }
 })
 
+// GET /api/classes/:id/materials/:materialId/preview - Stream file for inline preview
+router.get('/:id/materials/:materialId/preview', protect, async (req, res) => {
+    try {
+        const classData = await Class.findById(req.params.id)
+        if (!classData) return res.status(404).json({ message: 'Class not found' })
+
+        const isTeacher = classData.teacherId.toString() === req.user._id.toString()
+        const isStudent = classData.students.some(s => s.toString() === req.user._id.toString())
+        if (!isTeacher && !isStudent) return res.status(403).json({ message: 'Not authorized' })
+
+        const material = await Document.findById(req.params.materialId)
+        if (!material) return res.status(404).json({ message: 'Material not found' })
+
+        if (!fs.existsSync(material.filePath)) {
+            return res.status(404).json({ message: 'File not found on server' })
+        }
+
+        const mimeType = material.mimeType || 'application/octet-stream'
+        const stat = fs.statSync(material.filePath)
+
+        res.setHeader('Content-Type', mimeType)
+        res.setHeader('Content-Length', stat.size)
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(material.originalName)}"`)
+        res.setHeader('Cache-Control', 'private, max-age=3600')
+
+        const stream = fs.createReadStream(material.filePath)
+        stream.pipe(res)
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
 // POST /api/classes/:id/materials - Upload material to class
 router.post('/:id/materials', protect, authorize('teacher'), upload.single('file'), async (req, res) => {
     try {

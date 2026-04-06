@@ -12,6 +12,7 @@ import classService from '../../services/classService';
 import UploadMaterialModal from './UploadMaterialModal';
 import AddMilestoneModal from './AddMilestoneModal';
 import EditMilestoneModal from './EditMilestoneModal';
+import FilePreviewModal from '../../components/shared/FilePreviewModal';
 
 const ClassDetail = () => {
   const { id } = useParams();
@@ -32,6 +33,7 @@ const ClassDetail = () => {
   const [heatmapData, setHeatmapData] = useState(null);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
   const [topicProgressData, setTopicProgressData] = useState([]);
+  const [previewMaterial, setPreviewMaterial] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -437,7 +439,8 @@ const ClassDetail = () => {
                       key={material._id || idx}
                       variants={itemVariants}
                       whileHover={{ y: -2 }}
-                      className="card p-4"
+                      className="card p-4 hover:border-indigo-500/40 transition-colors cursor-pointer"
+                      onClick={() => setPreviewMaterial(material)}
                     >
                       <div className="flex items-start gap-3">
                         <FileText className="w-10 h-10 text-indigo-400 flex-shrink-0" />
@@ -814,6 +817,13 @@ const ClassDetail = () => {
         classId={id}
         milestone={selectedMilestone}
         onUpdated={handleMilestoneUpdated}
+      />
+
+      <FilePreviewModal
+        isOpen={!!previewMaterial}
+        onClose={() => setPreviewMaterial(null)}
+        file={previewMaterial}
+        classId={id}
       />
     </div>
   );

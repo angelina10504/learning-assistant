@@ -24,6 +24,7 @@ import ProgressBar from '../../components/shared/ProgressBar';
 import classService from '../../services/classService';
 import sessionService from '../../services/sessionService';
 import PreAssessmentModal from '../../components/PreAssessmentModal';
+import FilePreviewModal from '../../components/shared/FilePreviewModal';
 
 const ClassDetail = () => {
   const { id } = useParams();
@@ -38,6 +39,7 @@ const ClassDetail = () => {
   const [preparingMilestone, setPreparingMilestone] = useState(null);
   const [showAssessment, setShowAssessment] = useState(false);
   const [activeMilestoneId, setActiveMilestoneId] = useState(null);
+  const [previewMaterial, setPreviewMaterial] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -299,7 +301,8 @@ const ClassDetail = () => {
                       key={material._id || idx}
                       variants={itemVariants}
                       whileHover={{ y: -2 }}
-                      className="card p-4 hover:border-indigo-500/40 transition-colors"
+                      onClick={() => setPreviewMaterial(material)}
+                      className="card p-4 hover:border-indigo-500/40 transition-colors cursor-pointer"
                     >
                       <div className="flex items-start gap-3">
                         <div className="p-2.5 bg-indigo-500/10 rounded-lg flex-shrink-0">
@@ -422,6 +425,13 @@ const ClassDetail = () => {
         classId={id}
         milestoneId={activeMilestoneId}
         onComplete={handleAssessmentComplete}
+      />
+
+      <FilePreviewModal
+        isOpen={!!previewMaterial}
+        onClose={() => setPreviewMaterial(null)}
+        file={previewMaterial}
+        classId={id}
       />
     </div>
   );
