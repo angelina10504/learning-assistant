@@ -130,10 +130,29 @@ router.get('/dashboard', protect, authorize('student'), async (req, res) => {
     }
 })
 
+// POST /api/sessions/pre-assessment-questions - Get diagnostic questions
+router.post('/pre-assessment-questions', protect, authorize('student'), async (req, res) => {
+    try {
+        const { classId } = req.body
+        const collectionName = `class_${classId}`
+        const genaiUrl = process.env.GENAI_URL || 'http://localhost:8000'
+
+        const response = await axios.post(`${genaiUrl}/agent/pre-assessment-questions`, {
+            collection_name: collectionName
+        })
+
+        res.json(response.data)
+    } catch (error) {
+        console.error('Pre-assessment questions error:', error?.response?.data || error.message)
+        const detail = error?.response?.data?.detail
+        res.status(500).json({ message: detail || `Failed to fetch assessment questions: ${error.message}` })
+    }
+})
+
 // POST /api/sessions/generate-plan - Generate AI study plan
 router.post('/generate-plan', protect, authorize('student'), async (req, res) => {
     try {
-        const { classId, milestoneId } = req.body
+        const { classId, milestoneId, assessmentResults } = req.body
 
         if (!classId) {
             return res.status(400).json({ message: 'Class ID is required' })
@@ -165,7 +184,8 @@ router.post('/generate-plan', protect, authorize('student'), async (req, res) =>
         const genaiResponse = await axios.post(`${genaiUrl}/agent/generate-plan`, {
             collection_name: collectionName,
             milestone_topic: milestoneTopic,
-            milestone_deadline: milestoneDeadline
+            milestone_deadline: milestoneDeadline,
+            assessment_results: assessmentResults
         })
 
         const planData = genaiResponse.data
@@ -183,6 +203,8 @@ router.post('/generate-plan', protect, authorize('student'), async (req, res) =>
                 difficulty: t.difficulty || 'intermediate',
                 status: i === 0 ? 'current' : 'locked',
                 order: t.order || i + 1,
+                priority: t.priority || 'medium',
+                priorKnowledge: t.priorKnowledge || 'none',
                 pageRange: t.pageRange || []
             })),
             totalEstimatedHours: planData.totalEstimatedHours || 0
@@ -228,6 +250,25 @@ router.get('/plans/:id', protect, authorize('student'), async (req, res) => {
         }
 
         res.json(plan)
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
+// DELETE /api/sessions/plans/:id - Delete a study plan
+router.delete('/plans/:id', protect, authorize('student'), async (req, res) => {
+    try {
+        const plan = await StudyPlan.findById(req.params.id)
+        if (!plan) {
+            return res.status(404).json({ message: 'Plan not found' })
+        }
+
+        if (plan.studentId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Not authorized' })
+        }
+
+        await StudyPlan.findByIdAndDelete(req.params.id)
+        res.json({ message: 'Plan deleted successfully' })
     } catch (error) {
         res.status(500).json({ message: error.message })
     }

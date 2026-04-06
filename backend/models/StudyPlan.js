@@ -26,6 +26,16 @@ const planTopicSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    priority: {
+        type: String,
+        enum: ['high', 'medium', 'low'],
+        default: 'medium'
+    },
+    priorKnowledge: {
+        type: String,
+        enum: ['none', 'partial', 'strong'],
+        default: 'none'
+    },
     pageRange: [{
         type: Number
     }]

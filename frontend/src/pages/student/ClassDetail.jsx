@@ -23,6 +23,7 @@ import Badge from '../../components/shared/Badge';
 import ProgressBar from '../../components/shared/ProgressBar';
 import classService from '../../services/classService';
 import sessionService from '../../services/sessionService';
+import PreAssessmentModal from '../../components/PreAssessmentModal';
 
 const ClassDetail = () => {
   const { id } = useParams();
@@ -35,6 +36,8 @@ const ClassDetail = () => {
   const [error, setError] = useState(null);
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [preparingMilestone, setPreparingMilestone] = useState(null);
+  const [showAssessment, setShowAssessment] = useState(false);
+  const [activeMilestoneId, setActiveMilestoneId] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -83,27 +86,18 @@ const ClassDetail = () => {
     }
   };
 
-  const handleGeneratePlan = async (milestoneId = null) => {
-    if (milestoneId) {
-      setPreparingMilestone(milestoneId);
-    } else {
-      setGeneratingPlan(true);
+  const handleGeneratePlan = (milestoneId = null) => {
+    if (materials.length === 0) {
+      toast.error("No study materials available to generate questions from.");
+      return;
     }
+    setActiveMilestoneId(milestoneId);
+    setShowAssessment(true);
+  };
 
-    const toastId = toast.loading('AI is analyzing your materials and creating a personalized plan...');
-
-    try {
-      const response = await sessionService.generatePlan(id, milestoneId);
-      const plan = response.data;
-      toast.success('Study plan generated!', { id: toastId });
-      navigate(`/student/plan/${plan._id || plan.id}`);
-    } catch (err) {
-      console.error('Generate plan error:', err);
-      toast.error(err.response?.data?.message || 'Failed to generate plan. Make sure materials are uploaded and vectorized.', { id: toastId });
-    } finally {
-      setGeneratingPlan(false);
-      setPreparingMilestone(null);
-    }
+  const handleAssessmentComplete = (plan) => {
+    toast.success('Personalized study plan generated!');
+    navigate(`/student/plan/${plan._id || plan.id}`);
   };
 
   const handleCopyClassCode = () => {
@@ -421,6 +415,14 @@ const ClassDetail = () => {
           </div>
         </div>
       </main>
+
+      <PreAssessmentModal
+        isOpen={showAssessment}
+        onClose={() => setShowAssessment(false)}
+        classId={id}
+        milestoneId={activeMilestoneId}
+        onComplete={handleAssessmentComplete}
+      />
     </div>
   );
 };

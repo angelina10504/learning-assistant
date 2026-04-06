@@ -13,12 +13,14 @@ import {
   Target,
   ChevronDown,
   ChevronUp,
+  Trash2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Navbar from '../../components/shared/Navbar';
 import Badge from '../../components/shared/Badge';
 import ProgressBar from '../../components/shared/ProgressBar';
 import sessionService from '../../services/sessionService';
+import { ShieldAlert, Info } from 'lucide-react';
 
 const StudyPlanView = () => {
   const { id: planId } = useParams();
@@ -42,6 +44,20 @@ const StudyPlanView = () => {
       toast.error('Failed to load study plan');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeletePlan = async () => {
+    if (window.confirm('Are you sure you want to delete this study plan? This action cannot be undone.')) {
+      try {
+        await sessionService.deletePlan(planId);
+        toast.success('Study plan deleted');
+        const classId = plan.classId?._id || plan.classId;
+        navigate(`/student/class/${classId}`);
+      } catch (err) {
+        console.error('Error deleting plan:', err);
+        toast.error('Failed to delete study plan');
+      }
     }
   };
 
@@ -85,6 +101,15 @@ const StudyPlanView = () => {
     if (d === 'advanced') return 'red';
     return 'amber';
   };
+
+  const sortedTopics = plan
+    ? [...plan.topics].sort((a, b) => {
+        const priorityOrder = { high: 0, medium: 1, low: 2 };
+        return priorityOrder[a.priority] - priorityOrder[b.priority];
+      })
+    : [];
+
+  const prioritizedCount = plan?.topics.filter(t => t.priority === 'high').length || 0;
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -151,7 +176,14 @@ const StudyPlanView = () => {
           </button>
 
           {/* Plan Header Card */}
-          <div className="card p-6 mb-8">
+          <div className="card p-6 mb-8 relative group">
+            <button
+              onClick={handleDeletePlan}
+              className="absolute top-4 right-4 p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+              title="Delete Study Plan"
+            >
+              <Trash2 size={20} />
+            </button>
             <div className="flex flex-col sm:flex-row items-start gap-4">
               <div className="p-3 bg-indigo-500/10 rounded-xl">
                 <Sparkles className="w-8 h-8 text-indigo-400" />
@@ -193,6 +225,25 @@ const StudyPlanView = () => {
               </div>
             )}
           </div>
+
+          {/* Personalization Banner */}
+          {prioritizedCount > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-8 p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-start gap-3"
+            >
+              <div className="mt-0.5 p-1.5 bg-indigo-500/20 rounded-lg">
+                <Sparkles size={16} className="text-indigo-400" />
+              </div>
+              <div>
+                <p className="text-indigo-200 text-sm font-medium">This plan is personalized based on your assessment.</p>
+                <p className="text-indigo-400/70 text-xs mt-0.5">
+                  {prioritizedCount} topic{prioritizedCount > 1 ? 's are' : ' is'} prioritized as focus areas based on your responses.
+                </p>
+              </div>
+            </motion.div>
+          )}
         </motion.div>
 
         {/* Topic Roadmap */}
@@ -201,7 +252,9 @@ const StudyPlanView = () => {
           <div className="absolute left-7 top-0 bottom-0 w-0.5 bg-gradient-to-b from-cyan-500/50 via-slate-700 to-slate-800" />
 
           <div className="space-y-4">
-            {plan.topics.map((topic, idx) => {
+            {sortedTopics.map((topic, idx) => {
+              // Find original index for starting session (since we sorted)
+              const originalIdx = plan.topics.findIndex(t => t.name === topic.name);
               const isExpanded = expandedTopic === idx;
               const isCurrent = topic.status === 'current';
               const isClickable = topic.status !== 'locked';
@@ -252,6 +305,16 @@ const StudyPlanView = () => {
                           {isCurrent && (
                             <Badge color="cyan" className="text-xs">Up Next</Badge>
                           )}
+                          {topic.priority === 'high' && (
+                            <Badge color="red" className="text-xs flex items-center gap-1">
+                              <ShieldAlert size={12} /> Focus Area
+                            </Badge>
+                          )}
+                          {topic.priorKnowledge === 'strong' && (
+                            <Badge color="green" className="text-xs flex items-center gap-1">
+                              <CheckCircle2 size={12} /> Quick Review
+                            </Badge>
+                          )}
                         </div>
                       </div>
 
@@ -260,16 +323,16 @@ const StudyPlanView = () => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleStartTopic(topic, idx);
+                              handleStartTopic(topic, originalIdx);
                             }}
-                            disabled={startingSession === idx}
+                            disabled={startingSession === originalIdx}
                             className={`text-xs py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition-colors ${
                               isCurrent
                                 ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
                                 : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
                             }`}
                           >
-                            {startingSession === idx ? (
+                            {startingSession === originalIdx ? (
                               <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                             ) : (
                               <Play size={12} />

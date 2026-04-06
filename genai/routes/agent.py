@@ -51,6 +51,24 @@ class AgentChatResponse(BaseModel):
     structured_data: List[Dict[str, Any]] = []
 
 
+class PreAssessmentRequest(BaseModel):
+    """Request body for pre-assessment questions."""
+    collection_name: str
+
+
+class PreAssessmentQuestion(BaseModel):
+    id: int
+    topic: str
+    question: str
+    options: List[str]
+    correct: str
+    difficulty: str
+
+
+class PreAssessmentResponse(BaseModel):
+    questions: List[PreAssessmentQuestion]
+
+
 @router.post("/", response_model=AgentChatResponse)
 async def agent_chat(request: AgentChatRequest):
     """
@@ -185,11 +203,18 @@ async def session_summary(
         )
 
 
+class AssessmentAnswer(BaseModel):
+    topic: str
+    correct: bool
+    skipped: bool
+
+
 class GeneratePlanRequest(BaseModel):
     """Request body for study plan generation."""
     collection_name: str
     milestone_topic: Optional[str] = None
     milestone_deadline: Optional[str] = None  # ISO date string
+    assessment_results: Optional[List[AssessmentAnswer]] = None
 
 
 class PlanTopic(BaseModel):
@@ -200,12 +225,92 @@ class PlanTopic(BaseModel):
     status: str = "locked"
     order: int = 0
     pageRange: List[int] = []
+    priority: str = "medium"
+    priorKnowledge: str = "none"
 
 
 class GeneratePlanResponse(BaseModel):
     title: str
     topics: List[PlanTopic]
     totalEstimatedHours: float
+
+
+@router.post("/pre-assessment-questions", response_model=PreAssessmentResponse)
+async def pre_assessment_questions(request: PreAssessmentRequest):
+    """
+    Generate diagnostic questions from course materials.
+    """
+    try:
+        from utils.vector_store import load_chroma
+        from langchain_groq import ChatGroq
+        import os
+        import json
+        import re
+
+        try:
+            vectorstore = load_chroma(collection_name=request.collection_name)
+        except Exception:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Study material has not been prepared yet. Please ask your teacher to vectorize materials first."
+            )
+
+        # Retrieve all chunks for broad coverage
+        collection_docs = vectorstore.get(include=["documents"])
+        if not collection_docs or not collection_docs.get("documents"):
+            raise HTTPException(status_code=400, detail="No study materials found.")
+
+        all_texts = collection_docs["documents"]
+        # Get up to 20 sampled chunks
+        step = max(1, len(all_texts) // 20)
+        sampled_texts = [all_texts[i] for i in range(0, len(all_texts), step)][:20]
+        context = "\n\n".join(sampled_texts)[:8000]
+
+        llm = ChatGroq(
+            model="llama-3.1-8b-instant",
+            api_key=os.getenv("GROQ_API_KEY"),
+            temperature=0.4
+        )
+
+        prompt = f"""Based on the following course material, generate exactly 5 diagnostic questions to assess a student's prior knowledge.
+The questions should cover different key topics from the material.
+For each question provide 4 MCQ options with one correct answer (A, B, C, or D), and tag which topic it tests.
+
+Content:
+{context}
+
+Return ONLY valid JSON in this format:
+{{
+  "questions": [
+    {{
+      "id": 1,
+      "topic": "Topic Name",
+      "question": "Question text?",
+      "options": ["A. Choice 1", "B. Choice 2", "C. Choice 3", "D. Choice 4"],
+      "correct": "A",
+      "difficulty": "basic"
+    }}
+  ]
+}}"""
+
+        response = llm.invoke(prompt)
+        text = response.content.strip()
+
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
+            else:
+                raise Exception("Failed to parse LLM response")
+
+        return PreAssessmentResponse(questions=data.get("questions", []))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/generate-plan", response_model=GeneratePlanResponse)
@@ -250,32 +355,54 @@ async def generate_plan(request: GeneratePlanRequest):
                 detail="No documents found in this collection. Please upload materials first."
             )
 
-        # Concatenate chunk texts (limit to first ~6000 chars to fit LLM context)
+        # Prepare assessment context if provided
+        assessment_context = ""
+        if request.assessment_results:
+            assessment_context = "\nPrior knowledge assessment results:\n"
+            for res in request.assessment_results:
+                status = "already knows" if res.correct else "needs work"
+                if res.skipped: status = "uncertain"
+                assessment_context += f"- {res.topic}: Student {status}\n"
+            
+            assessment_context += """
+When generating topics:
+- If 'already knows': mark low priority, reduce hours, set priorKnowledge='strong'
+- If 'needs work': mark high priority, increase hours, set priorKnowledge='none'
+- If 'uncertain': mark medium priority, standard hours, set priorKnowledge='partial'
+"""
+
+        # Concatenate chunk texts
         all_texts = collection_docs["documents"]
         concatenated_text = "\n\n".join(all_texts)[:6000]
 
-        # Use LLM directly to extract topics from raw chunk text
+        # Use LLM directly to extract topics
         llm = get_llm()
-        extract_prompt = f"""Analyze this educational content and extract the main topics and subtopics for a study plan.
+        extract_prompt = f"""Analyze this educational content and extract the main topics for a study plan.
+{assessment_context}
 
-Content from uploaded study materials:
+Content:
 {concatenated_text}
 
-Return ONLY valid JSON with no extra text or markdown:
+Return ONLY valid JSON:
 {{
     "topics": [
         {{
             "name": "Topic Name",
-            "subtopics": ["subtopic1", "subtopic2"],
+            "subtopics": ["sub1", "sub2"],
             "estimatedMinutes": 30,
-            "difficulty": "beginner|intermediate|advanced",
+            "difficulty": "intermediate",
             "order": 1,
+            "priority": "high|medium|low",
+            "priorKnowledge": "none|partial|strong",
             "pageRange": [1, 5]
         }}
     ],
     "totalEstimatedHours": 2.5,
-    "title": "Study Plan: [subject name]"
-}}"""
+    "title": "Study Plan: [Subject]"
+}}
+
+Note: pageRange MUST be a list of exactly two INTEGERS representing start and end pages. If unknown, use [].
+"""
 
         llm_response = llm.invoke(extract_prompt)
         response_text = llm_response.content.strip()
@@ -378,8 +505,17 @@ Return ONLY valid JSON in this format:
         total_minutes = 0
         for i, topic in enumerate(raw_topics):
             est_min = topic.get("estimatedMinutes") or topic.get("estimated_minutes") or 30
-            page_range = topic.get("pageRange") or topic.get("page_range") or []
-
+            raw_page_range = topic.get("pageRange") or topic.get("page_range") or []
+            
+            # Sanitize pageRange (ensure only integers)
+            sanitized_page_range = []
+            if isinstance(raw_page_range, list):
+                for p in raw_page_range:
+                    try:
+                        sanitized_page_range.append(int(float(p)))
+                    except (ValueError, TypeError):
+                        continue
+            
             plan_topics.append(PlanTopic(
                 name=topic.get("name", f"Topic {i+1}"),
                 subtopics=topic.get("subtopics", []),
@@ -387,7 +523,9 @@ Return ONLY valid JSON in this format:
                 difficulty=topic.get("difficulty", "intermediate"),
                 status="current" if i == 0 else "locked",
                 order=i + 1,
-                pageRange=page_range if isinstance(page_range, list) else []
+                priority=topic.get("priority", "medium"),
+                priorKnowledge=topic.get("priorKnowledge", "none"),
+                pageRange=sanitized_page_range
             ))
             total_minutes += est_min
 

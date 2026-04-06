@@ -68,6 +68,9 @@ const classService = {
   updateMilestone: (classId, milestoneId, topic, deadline, isCompulsory) => {
     return api.put(`/classes/${classId}/milestones/${milestoneId}`, { topic, deadline, isCompulsory });
   },
+  getMasteryHeatmap: (classId) => {
+    return api.get(`/classes/${classId}/mastery-heatmap`);
+  },
 };
 
 export default classService;

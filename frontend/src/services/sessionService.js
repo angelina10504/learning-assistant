@@ -31,9 +31,14 @@ const sessionService = {
     return api.get(`/sessions/${sessionId}`);
   },
 
+  // POST /api/sessions/pre-assessment-questions
+  getPreAssessmentQuestions: (classId) => {
+    return api.post('/sessions/pre-assessment-questions', { classId });
+  },
+
   // POST /api/sessions/generate-plan
-  generatePlan: (classId, milestoneId) => {
-    return api.post('/sessions/generate-plan', { classId, milestoneId });
+  generatePlan: (classId, milestoneId, assessmentResults = null) => {
+    return api.post('/sessions/generate-plan', { classId, milestoneId, assessmentResults });
   },
 
   // GET /api/sessions/plans
@@ -50,6 +55,11 @@ const sessionService = {
   // PATCH /api/sessions/plans/:planId/topics/:topicIndex
   updateTopicStatus: (planId, topicIndex, status) => {
     return api.patch(`/sessions/plans/${planId}/topics/${topicIndex}`, { status });
+  },
+
+  // DELETE /api/sessions/plans/:id
+  deletePlan: (planId) => {
+    return api.delete(`/sessions/plans/${planId}`);
   },
 };
 

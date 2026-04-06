@@ -50,6 +50,7 @@ const Class = require('../models/Class')
 const User = require('../models/User')
 const Document = require('../models/Document')
 const StudySession = require('../models/StudySession')
+const StudyPlan = require('../models/StudyPlan')
 
 // Helper: Generate random 6-char alphanumeric class code
 const generateClassCode = () => {
@@ -650,6 +651,79 @@ router.put('/:id/milestones/:milestoneId', protect, authorize('teacher'), async 
         await classData.save()
 
         res.json(milestone)
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
+// GET /api/classes/:id/mastery-heatmap - Get mastery heatmap for a class
+router.get('/:id/mastery-heatmap', protect, authorize('teacher'), async (req, res) => {
+    try {
+        const classId = req.params.id
+        const classData = await Class.findById(classId).populate('students', 'name')
+
+        if (!classData) {
+            return res.status(404).json({ message: 'Class not found' })
+        }
+
+        if (classData.teacherId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Only class teacher can view mastery heatmap' })
+        }
+
+        // 1. Find all StudyPlans for this classId
+        const studyPlans = await StudyPlan.find({ classId })
+        const sessions = await StudySession.find({ classId })
+
+        // 2. Collect all unique topic names across all plans
+        const topicsSet = new Set()
+        studyPlans.forEach(plan => {
+            plan.topics.forEach(t => topicsSet.add(t.name))
+        })
+        const allTopics = Array.from(topicsSet).sort()
+
+        // 3. For each student, calculate mastery per topic
+        const studentMastery = await Promise.all(classData.students.map(async (student) => {
+            const studentId = student._id.toString()
+            const studentPlan = studyPlans.find(p => p.studentId.toString() === studentId)
+            const studentSessions = sessions.filter(s => s.studentId.toString() === studentId)
+
+            const mastery = {}
+
+            allTopics.forEach(topicName => {
+                let status = 'not_started'
+
+                // Check StudySessions for weak flags (overrides plan status)
+                const isWeak = studentSessions.some(s => 
+                    s.weakTopics.some(wt => wt.topic === topicName)
+                )
+
+                if (isWeak) {
+                    status = 'weak'
+                } else if (studentPlan) {
+                    const topicInPlan = studentPlan.topics.find(t => t.name === topicName)
+                    if (topicInPlan) {
+                        if (topicInPlan.status === 'completed') {
+                            status = 'strong'
+                        } else if (topicInPlan.status === 'current') {
+                            status = 'fair'
+                        }
+                    }
+                }
+
+                mastery[topicName] = status
+            })
+
+            return {
+                studentId,
+                name: student.name,
+                mastery
+            }
+        }))
+
+        res.json({
+            topics: allTopics,
+            students: studentMastery
+        })
     } catch (error) {
         res.status(500).json({ message: error.message })
     }
