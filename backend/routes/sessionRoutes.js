@@ -343,16 +343,29 @@ router.post('/start', protect, authorize('student'), async (req, res) => {
             }
         }
 
-        // If planId and topicIndex provided, mark topic as current in the plan
-        if (planId && topicIndex !== undefined && topicIndex !== null) {
-            const plan = await StudyPlan.findById(planId)
-            if (plan && plan.studentId.toString() === req.user._id.toString()) {
-                const idx = parseInt(topicIndex, 10)
-                if (idx >= 0 && idx < plan.topics.length) {
-                    plan.topics[idx].status = 'current'
-                    await plan.save()
+        // Check for an existing active session to resume
+        const existingSession = await StudySession.findOne({
+            studentId: req.user._id,
+            classId,
+            topicName: topicName || null,
+            planId: planId || null,
+            topicIndex: topicIndex !== undefined ? topicIndex : null,
+            endedAt: { $exists: false }
+        })
+
+        if (existingSession) {
+            // Update status if needed then return
+            if (planId && topicIndex !== undefined && topicIndex !== null) {
+                const plan = await StudyPlan.findById(planId)
+                if (plan && plan.studentId.toString() === req.user._id.toString()) {
+                    const idx = parseInt(topicIndex, 10)
+                    if (idx >= 0 && idx < plan.topics.length && plan.topics[idx].status !== 'completed') {
+                        plan.topics[idx].status = 'current'
+                        await plan.save()
+                    }
                 }
             }
+            return res.json(existingSession)
         }
 
         // Create new study session
@@ -404,7 +417,12 @@ router.post('/:id/message', protect, authorize('student'), async (req, res) => {
             return res.status(400).json({ message: 'Message content is required' })
         }
 
-        // Add user message to session
+        // Track duration if provided (cumulative seconds)
+        if (req.body.duration !== undefined) {
+            session.duration = req.body.duration
+        }
+
+        // Add user message to history
         session.messages.push({
             role: 'human',
             content,
@@ -530,7 +548,12 @@ router.post('/:id/end', protect, authorize('student'), async (req, res) => {
         session.performanceMetrics.correctCount = correctAnswers
         session.performanceMetrics.avgConfidence = session.weakTopics.length > 0
             ? session.weakTopics.reduce((sum, t) => sum + (t.confidenceScore || 0), 0) / session.weakTopics.length
-            : 0
+            : (session.performanceMetrics?.avgConfidence || 0)
+
+        // Save final duration
+        if (req.body.duration !== undefined) {
+            session.duration = req.body.duration
+        }
 
         session.endedAt = new Date()
 

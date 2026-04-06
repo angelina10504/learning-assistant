@@ -99,7 +99,33 @@ router.get('/teaching', protect, authorize('teacher'), async (req, res) => {
             .populate('students', 'name email')
             .populate('materials', 'originalName uploadedAt')
 
-        res.json(classes)
+        // Process classes to include student count and actual average completion
+        const refinedClasses = await Promise.all(classes.map(async (cls) => {
+            const studentCount = cls.students?.length || 0
+            let avgCompletion = 0
+
+            if (studentCount > 0) {
+                // Get all study plans for this class
+                const plans = await StudyPlan.find({ classId: cls._id })
+                if (plans.length > 0) {
+                    const totalProgress = plans.reduce((sum, p) => {
+                        const completed = p.topics.filter(t => t.status === 'completed').length
+                        const progress = p.topics.length > 0 ? (completed / p.topics.length) : 0
+                        return sum + progress
+                    }, 0)
+                    avgCompletion = Math.round((totalProgress / plans.length) * 100)
+                }
+            }
+
+            return {
+                ...cls.toObject(),
+                id: cls._id,
+                studentCount,
+                avgCompletion
+            }
+        }))
+
+        res.json(refinedClasses)
     } catch (error) {
         res.status(500).json({ message: error.message })
     }
@@ -315,42 +341,80 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
             classIds = [classData._id]
         }
 
-        // Get all study sessions for these classes
-        const sessions = await StudySession.find({ classId: { $in: classIds } })
-            .populate('studentId', 'name email')
+        // Get all study sessions and plans for these classes
+        const [sessions, plans] = await Promise.all([
+            StudySession.find({ classId: { $in: classIds } }).populate('studentId', 'name email'),
+            StudyPlan.find({ classId: { $in: classIds } })
+        ])
 
-        // Maps for tracking weak topics and student performance
+        // Maps for tracking stats
         const weakTopicsMap = new Map()
         const studentStatsMap = new Map()
+        const topicProgressMap = new Map()
 
+        // 1. Process Study Plans for baseline topic progress
+        plans.forEach(plan => {
+            plan.topics.forEach(topic => {
+                if (!topicProgressMap.has(topic.name)) {
+                    topicProgressMap.set(topic.name, { confSum: 0, count: 0 })
+                }
+                const tp = topicProgressMap.get(topic.name)
+                // Use priorKnowledge as initial confidence proxy
+                const baseConf = topic.priorKnowledge === 'strong' ? 85 : (topic.priorKnowledge === 'partial' ? 55 : 25)
+                tp.confSum += baseConf
+                tp.count += 1
+            })
+        })
+
+        // 2. Process Study Sessions for actual performance data
         sessions.forEach(s => {
             const studentId = s.studentId?._id?.toString()
             if (!studentId) return
             
-            // Student stats
             if (!studentStatsMap.has(studentId)) {
                 studentStatsMap.set(studentId, {
+                    id: studentId,
                     name: s.studentId.name,
-                    topicsCompleted: 0, // approximation from session
-                    timeStudied: 0,     // minutes
-                    progressRaw: 0
+                    email: s.studentId.email,
+                    topicsCompleted: 0,
+                    timeStudied: 0,
+                    progressRaw: 0,
+                    sessionCount: 0,
+                    weakAreas: new Set(),
+                    lastActive: s.startedAt,
+                    confidenceSum: 0,
+                    confidenceCount: 0
                 })
             }
             
             const stats = studentStatsMap.get(studentId)
+            stats.sessionCount += 1
             stats.topicsCompleted += s.completedTopics?.length || 0
-            
-            // Add interaction-based study duration
             stats.timeStudied += Math.round(calculateActiveDuration(s) / 60000)
             
             if (s.performanceMetrics?.avgConfidence) {
-                stats.progressRaw += s.performanceMetrics.avgConfidence * 100
+                const conf = s.performanceMetrics.avgConfidence * 100
+                stats.progressRaw += conf
+                stats.confidenceSum += conf
+                stats.confidenceCount += 1
+                
+                // Update topicProgressMap with actual session data if available
+                if (s.topicName && topicProgressMap.has(s.topicName)) {
+                    const tp = topicProgressMap.get(s.topicName)
+                    tp.confSum += conf
+                    tp.count += 1
+                }
             }
 
-            // Weak topics
+            if (s.startedAt > (stats.lastActive || 0)) {
+                stats.lastActive = s.startedAt
+            }
+
             if (s.weakTopics && Array.isArray(s.weakTopics)) {
                 s.weakTopics.forEach(wt => {
                     const tName = wt.topic
+                    stats.weakAreas.add(tName)
+                    
                     if (!weakTopicsMap.has(tName)) {
                         weakTopicsMap.set(tName, { strugglingCount: 0, confSum: 0, confCount: 0 })
                     }
@@ -364,29 +428,40 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
             }
         })
 
-        // Process maps to arrays
+        // Process maps to final arrays
         const weakTopics = Array.from(weakTopicsMap.entries()).map(([name, data]) => ({
             name,
             strugglingCount: data.strugglingCount,
             avgConfidence: data.confCount > 0 ? Math.round(data.confSum / data.confCount) : 0
-        })).sort((a, b) => b.strugglingCount - a.strugglingCount) // descending by struggle frequency
+        })).sort((a, b) => b.strugglingCount - a.strugglingCount)
 
-        const topPerformers = Array.from(studentStatsMap.values()).map(s => ({
+        const topicProgressData = Array.from(topicProgressMap.entries()).map(([topic, data]) => ({
+            topic,
+            confidence: data.count > 0 ? Math.round(data.confSum / data.count) : 0
+        })).sort((a, b) => a.topic.localeCompare(b.topic))
+
+        const students = Array.from(studentStatsMap.values()).map(s => ({
+            id: s.id,
             name: s.name,
+            email: s.email,
             topicsCompleted: s.topicsCompleted,
-            timeStudied: s.timeStudied > 60 ? parseFloat((s.timeStudied / 60).toFixed(1)) : 0, // in hours fallback to 0 if small
-            progress: s.topicsCompleted > 0 ? Math.min(100, Math.round(s.progressRaw / s.topicsCompleted)) : 0
-        })).sort((a, b) => b.topicsCompleted - a.topicsCompleted) // sort descending by completion
+            timeStudied: s.timeStudied > 60 ? parseFloat((s.timeStudied / 60).toFixed(1)) : 0,
+            progress: s.topicsCompleted > 0 ? Math.min(100, Math.round(s.progressRaw / s.topicsCompleted)) : (s.confidenceCount > 0 ? Math.round(s.confidenceSum / s.confidenceCount) : 0),
+            sessionCount: s.sessionCount,
+            weakAreas: Array.from(s.weakAreas),
+            confidence: s.confidenceCount > 0 ? Math.round(s.confidenceSum / s.confidenceCount) : 0,
+            lastActive: s.lastActive
+        })).sort((a, b) => b.progress - a.progress)
 
-        // Aggregate core stats
         const analytics = {
             totalSessions: sessions.length,
-            totalStudents: new Set(sessions.map(s => s.studentId?._id?.toString()).filter(Boolean)).size,
+            totalStudents: new Set([...sessions.map(s => s.studentId?._id?.toString()), ...plans.map(p => p.studentId.toString())].filter(Boolean)).size,
             averageConfidence: sessions.length > 0
                 ? Math.round((sessions.reduce((sum, s) => sum + (s.performanceMetrics?.avgConfidence || 0), 0) / sessions.length) * 100)
                 : 0,
             weakTopics,
-            topPerformers
+            students, // Renamed from topPerformers to be more generic
+            topicProgressData
         }
 
         res.json(analytics)

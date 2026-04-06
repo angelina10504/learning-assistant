@@ -75,6 +75,10 @@ const studySessionSchema = new mongoose.Schema({
     endedAt: {
         type: Date
     },
+    duration: {
+        type: Number,
+        default: 0
+    },
     performanceMetrics: {
         avgConfidence: {
             type: Number,

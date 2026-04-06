@@ -39,7 +39,7 @@ const TeacherDashboard = () => {
         id: cls._id || cls.id,
         studentCount: cls.students?.length || 0,
         materialCount: cls.materials?.length || 0,
-        avgCompletion: Math.floor(Math.random() * 20) // Random placeholder if missing, or 0
+        avgCompletion: 0 // Default to 0, will be updated by class-specific analytics or set to real value
       }));
       
       setClasses(mappedClasses);
@@ -109,9 +109,12 @@ const TeacherDashboard = () => {
     ? analytics.totalStudentsFromAPI 
     : classes.reduce((sum, c) => sum + (c.studentCount || 0), 0);
   const avgCompletion =
-    classes.length > 0
+    classes.filter(c => c.studentCount > 0).length > 0
       ? Math.round(
-          classes.reduce((sum, c) => sum + (c.avgCompletion || 0), 0) / classes.length
+          classes
+            .filter(c => c.studentCount > 0)
+            .reduce((sum, c) => sum + (c.avgCompletion || 0), 0) / 
+          classes.filter(c => c.studentCount > 0).length
         )
       : 0;
   const weakTopics = analytics?.weakTopics || [];
@@ -301,18 +304,20 @@ const TeacherDashboard = () => {
                         </div>
                       </div>
 
-                      <div className="mb-3">
-                        <div className="flex justify-between items-center mb-2">
-                          <p className="text-sm text-slate-400">Progress</p>
-                          <p className="text-sm font-semibold text-slate-50">
-                            {cls.avgCompletion || 0}%
-                          </p>
+                      {cls.studentCount > 0 && (
+                        <div className="mb-3">
+                          <div className="flex justify-between items-center mb-2">
+                            <p className="text-sm text-slate-400">Progress</p>
+                            <p className="text-sm font-semibold text-slate-50">
+                              {cls.avgCompletion || 0}%
+                            </p>
+                          </div>
+                          <ProgressBar
+                            value={cls.avgCompletion || 0}
+                            color={getProgressColor(cls.avgCompletion || 0)}
+                          />
                         </div>
-                        <ProgressBar
-                          value={cls.avgCompletion || 0}
-                          color={getProgressColor(cls.avgCompletion || 0)}
-                        />
-                      </div>
+                      )}
 
                       <p className="text-xs text-slate-400">
                         Click to view details and manage class

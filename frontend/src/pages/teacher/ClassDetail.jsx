@@ -31,6 +31,7 @@ const ClassDetail = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [heatmapData, setHeatmapData] = useState(null);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
+  const [topicProgressData, setTopicProgressData] = useState([]);
 
   useEffect(() => {
     fetchData();
@@ -69,13 +70,10 @@ const ClassDetail = () => {
 
       const analyticsResponse = await classService.getClassAnalytics(id);
       const analytics = analyticsResponse.data || {};
-
-      // Extract students from analytics
-      setStudents(
-        (analytics.students || mockStudents).sort(
-          (a, b) => (b.progress || 0) - (a.progress || 0)
-        )
-      );
+      
+      // Update students and topic progress from analytics
+      setStudents(analytics.students || []);
+      setTopicProgressData(analytics.topicProgressData || []);
 
       // Fetch milestones from class data
       try {
@@ -100,11 +98,7 @@ const ClassDetail = () => {
       }
     } catch (err) {
       console.error('Error fetching class data:', err);
-      // Use mock data
-      setClassData(mockClassData);
-      setStudents(mockStudents);
-      setMilestones([]);
-      setMaterials([]);
+      setError('Unable to load class data. Please ensure materials are vectorized and students have generated study plans.');
     } finally {
       setLoading(false);
     }
@@ -210,13 +204,6 @@ const ClassDetail = () => {
     sortBy === 'progress'
       ? [...students].sort((a, b) => (b.progress || 0) - (a.progress || 0))
       : [...students];
-
-  const topicProgressData = [
-    { topic: 'Algebra', confidence: 82 },
-    { topic: 'Calculus', confidence: 45 },
-    { topic: 'Integration', confidence: 55 },
-    { topic: 'Derivatives', confidence: 38 },
-  ];
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -831,52 +818,5 @@ const ClassDetail = () => {
     </div>
   );
 };
-
-// Mock data
-const mockClassData = {
-  id: '1',
-  name: 'Advanced Mathematics',
-  classCode: 'MATH101',
-  description: 'A comprehensive course on advanced mathematical concepts.',
-};
-
-const mockStudents = [
-  {
-    id: '1',
-    name: 'Arjun Singh',
-    progress: 95,
-    weakAreas: [],
-    sessionCount: 24,
-    confidence: 92,
-    lastActive: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '2',
-    name: 'Priya Sharma',
-    progress: 88,
-    weakAreas: ['Calculus'],
-    sessionCount: 22,
-    confidence: 85,
-    lastActive: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '3',
-    name: 'Rohan Patel',
-    progress: 72,
-    weakAreas: ['Calculus', 'Integration'],
-    sessionCount: 18,
-    confidence: 68,
-    lastActive: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '4',
-    name: 'Neha Gupta',
-    progress: 55,
-    weakAreas: ['Derivatives', 'Calculus', 'Integration'],
-    sessionCount: 12,
-    confidence: 50,
-    lastActive: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
 
 export default ClassDetail;

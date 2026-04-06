@@ -51,6 +51,7 @@ const StudySession = () => {
             currentConfidence: Math.round((apiData.performanceMetrics?.avgConfidence || 0) * 100),
           },
           weakTopics: apiData.weakTopics || [],
+          duration: apiData.duration || 0,
         };
 
         setSessionData(mappedSessionData);
@@ -114,6 +115,13 @@ const StudySession = () => {
 
   // Timer effect
   useEffect(() => {
+    // Sync sessionTime with existing duration once session data is loaded
+    if (sessionData && sessionData.duration !== undefined) {
+      setSessionTime(sessionData.duration);
+    }
+  }, [sessionData?.id]);
+
+  useEffect(() => {
     timerRef.current = setInterval(() => {
       setSessionTime((prev) => prev + 1);
     }, 1000);
@@ -136,7 +144,7 @@ const StudySession = () => {
 
     setSending(true);
     try {
-      const response = await sessionService.sendMessage(sessionId, content);
+      const response = await sessionService.sendMessage(sessionId, content, sessionTime);
       if (response.data.message) {
         const aiMessage = {
           role: 'ai',
@@ -199,7 +207,7 @@ const StudySession = () => {
 
     setEndingSession(true);
     try {
-      await sessionService.endSession(sessionId);
+      await sessionService.endSession(sessionId, sessionTime);
       toast.success('Session ended!');
       // Navigate back to plan if we came from one, otherwise dashboard
       if (sessionData?.planId) {

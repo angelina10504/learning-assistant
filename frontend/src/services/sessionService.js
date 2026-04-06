@@ -7,13 +7,17 @@ const sessionService = {
   },
 
   // POST /api/sessions/:id/message
-  sendMessage: (sessionId, message) => {
-    return api.post(`/sessions/${sessionId}/message`, { content: message });
+  sendMessage: (sessionId, message, duration) => {
+    const data = { content: message };
+    if (duration !== undefined) data.duration = duration;
+    return api.post(`/sessions/${sessionId}/message`, data);
   },
 
   // POST /api/sessions/:id/end
-  endSession: (sessionId) => {
-    return api.post(`/sessions/${sessionId}/end`);
+  endSession: (sessionId, duration) => {
+    const data = {};
+    if (duration !== undefined) data.duration = duration;
+    return api.post(`/sessions/${sessionId}/end`, data);
   },
 
   // GET /api/sessions/dashboard
