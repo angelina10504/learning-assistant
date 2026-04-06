@@ -39,8 +39,8 @@ const StudentDashboard = () => {
           ...cls,
           id: cls._id || cls.id,
           name: cls.name,
-          teacherName: cls.teacherId?.name || 'Instructor',
-          progress: 0, 
+          teacherName: cls.teacherId?.name || cls.teacherName || 'Instructor',
+          progress: cls.progress || 0, // Populated by /enrolled backend
           type: 'compulsory',
         }));
         setClasses(mappedClasses);

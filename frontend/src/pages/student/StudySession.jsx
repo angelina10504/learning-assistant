@@ -5,8 +5,10 @@ import { ArrowLeft, Clock, BookOpen, HelpCircle, Play, BarChart3, AlertTriangle,
 import toast from 'react-hot-toast';
 import Navbar from '../../components/shared/Navbar';
 import ChatMessage from '../../components/student/ChatMessage';
+import QuizMessage, { parseQuizFromMessage } from '../../components/student/QuizMessage';
 import TopicRoadmap from '../../components/student/TopicRoadmap';
 import sessionService from '../../services/sessionService';
+import { Activity, CheckCircle2 } from 'lucide-react';
 
 const StudySession = () => {
   const { id: sessionId } = useParams();
@@ -21,6 +23,14 @@ const StudySession = () => {
   const [sessionTime, setSessionTime] = useState(0);
   const [endingSession, setEndingSession] = useState(false);
   const [autoMessageSent, setAutoMessageSent] = useState(false);
+  const [sessionStartTime] = useState(Date.now());
+  const [progress, setProgress] = useState(0);
+  const [sessionStats, setSessionStats] = useState({
+    questionsAsked: 0,
+    correctAnswers: 0,
+    totalAnswered: 0,
+    confidence: 0
+  });
 
   const messagesEndRef = useRef(null);
   const timerRef = useRef(null);
@@ -55,6 +65,14 @@ const StudySession = () => {
         };
 
         setSessionData(mappedSessionData);
+        
+        // Initialize stats from existing data if resuming
+        setSessionStats({
+          questionsAsked: apiData.performanceMetrics?.questionsAnswered || 0,
+          correctAnswers: apiData.performanceMetrics?.correctCount || 0,
+          totalAnswered: apiData.performanceMetrics?.questionsAnswered || 0,
+          confidence: Math.round((apiData.performanceMetrics?.avgConfidence || 0) * 100)
+        });
 
         // Load plan topics for sidebar if session has a plan
         if (apiData.planId) {
@@ -134,6 +152,79 @@ const StudySession = () => {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
+  // Progress calculation logic
+  const calculateProgressValue = () => {
+    let score = 0;
+    
+    // Signal 1: Messages exchanged (max 30 points)
+    const humanMessages = messages.filter(m => m.role === 'user').length;
+    score += Math.min(humanMessages * 5, 30);
+    
+    // Signal 2: Quiz performance (max 40 points)
+    if (sessionStats.totalAnswered > 0) {
+      score += Math.round((sessionStats.correctAnswers / sessionStats.totalAnswered) * 40);
+    }
+    
+    // Signal 3: Time spent (max 20 points)
+    const elapsedMinutes = (Date.now() - sessionStartTime) / 60000;
+    score += Math.min(Math.floor(elapsedMinutes / 2) * 5, 20);
+    
+    // Signal 4: Completion bonus (10 points)
+    if (sessionStats.totalAnswered >= 2 && sessionStats.confidence >= 50) {
+      score += 10;
+    }
+    
+    return Math.min(score, 100);
+  };
+
+  // Update progress periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setProgress(calculateProgressValue());
+    }, 30000); // Every 30 seconds
+    return () => clearInterval(interval);
+  }, [messages.length, sessionStats, sessionStartTime]);
+
+  // Update progress whenever messages or stats change
+  useEffect(() => {
+    setProgress(calculateProgressValue());
+  }, [messages.length, sessionStats]);
+
+  // Message splitting utility — uses the reliable CORRECT_ANSWER marker
+  const splitMessageContent = (content) => {
+    const parsed = parseQuizFromMessage(content);
+    if (!parsed) return { hasQuiz: false, content };
+
+    return {
+      hasQuiz: true,
+      explanation: parsed.contentBefore,
+      questionText: parsed.questionText,
+      options: parsed.options,       // [{ letter, text, full }, ...]
+      correctLetter: parsed.correctLetter,
+    };
+  };
+
+  // Fix 5: handleQuizAnswer receives (isCorrect, selectedLetter, correctLetter)
+  const handleQuizAnswer = (isCorrect, selectedLetter, correctLetter) => {
+    setSessionStats(prev => {
+      const newCorrect = prev.correctAnswers + (isCorrect ? 1 : 0);
+      const newTotal = prev.totalAnswered + 1;
+      return {
+        questionsAsked: newTotal,
+        correctAnswers: newCorrect,
+        totalAnswered: newTotal,
+        confidence: Math.round((newCorrect / newTotal) * 100),
+      };
+    });
+
+    // Fix 4: auto-message with clear result so agent knows what happened
+    const feedback = isCorrect
+      ? `I answered ${selectedLetter}) and got it correct.`
+      : `I answered ${selectedLetter}) which was wrong. The correct answer was ${correctLetter}). Please explain why ${correctLetter}) is correct in simple terms.`;
+
+    sendMessage(feedback);
+  };
+
   const sendMessage = async (content) => {
     const userMessage = {
       role: 'user',
@@ -207,7 +298,14 @@ const StudySession = () => {
 
     setEndingSession(true);
     try {
-      await sessionService.endSession(sessionId, sessionTime);
+      const endData = {
+        duration: sessionTime,
+        questionsAsked: sessionStats.questionsAsked,
+        correctAnswers: sessionStats.correctAnswers,
+        confidence: sessionStats.confidence,
+        progressPercent: progress
+      };
+      await sessionService.endSession(sessionId, endData);
       toast.success('Session ended!');
       // Navigate back to plan if we came from one, otherwise dashboard
       if (sessionData?.planId) {
@@ -277,17 +375,48 @@ const StudySession = () => {
             </div>
 
             <div className="flex items-center gap-4">
+              <div className="hidden sm:flex items-center gap-3 mr-4">
+                <div className="text-right">
+                  <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Progress</p>
+                  <p className="text-sm font-bold text-slate-300">{progress}% complete</p>
+                </div>
+                <div className="w-32 h-2.5 bg-slate-700 rounded-full overflow-hidden border border-slate-600/50">
+                  <motion.div 
+                    className={`h-full ${
+                      progress < 30 ? 'bg-red-500' : 
+                      progress < 60 ? 'bg-yellow-500' : 
+                      progress < 85 ? 'bg-blue-500' : 'bg-emerald-500'
+                    }`}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progress}%` }}
+                    transition={{ type: 'spring', stiffness: 50 }}
+                  />
+                </div>
+              </div>
+
               <div className="flex items-center gap-2 px-3 py-1 bg-slate-700 rounded-lg">
                 <Clock className="w-4 h-4 text-cyan-300" />
                 <span className="text-sm font-mono text-cyan-300">{formatTime(sessionTime)}</span>
               </div>
-              <button
-                onClick={handleEndSession}
-                disabled={endingSession}
-                className="btn-danger text-sm"
-              >
-                {endingSession ? 'Ending...' : 'End Session'}
-              </button>
+              
+              {progress >= 95 || (sessionStats.totalAnswered >= 5 && sessionStats.confidence >= 70) ? (
+                <button
+                  onClick={handleEndSession}
+                  disabled={endingSession}
+                  className="btn-primary text-sm flex items-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  {endingSession ? 'Wrapping up...' : 'Finish Topic'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleEndSession}
+                  disabled={endingSession}
+                  className="btn-danger text-sm"
+                >
+                  {endingSession ? 'Ending...' : 'End Session'}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -305,16 +434,35 @@ const StudySession = () => {
                 <p className="text-slate-400">Preparing your study session...</p>
               </div>
             ) : (
-              messages.map((msg, idx) => (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: Math.min(idx * 0.05, 0.5) }}
-                >
-                  <ChatMessage message={msg} />
-                </motion.div>
-              ))
+              messages.map((msg, idx) => {
+                const isAI = msg.role === 'ai';
+                const parsed = isAI ? splitMessageContent(msg.content) : { hasQuiz: false };
+
+                return (
+                  <motion.div
+                    key={idx}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(idx * 0.02, 0.3) }}
+                  >
+                    {isAI && parsed.hasQuiz ? (
+                      <>
+                        {parsed.explanation && (
+                          <ChatMessage message={{ ...msg, content: parsed.explanation }} />
+                        )}
+                        <QuizMessage 
+                          questionText={parsed.questionText}
+                          options={parsed.options}
+                          correctLetter={parsed.correctLetter}
+                          onAnswer={handleQuizAnswer}
+                        />
+                      </>
+                    ) : (
+                      <ChatMessage message={msg} />
+                    )}
+                  </motion.div>
+                );
+              })
             )}
 
             {sending && (
@@ -399,32 +547,35 @@ const StudySession = () => {
 
           {/* Session Stats */}
           <motion.div
-            className="card p-4"
+            className="card p-4 relative overflow-hidden"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
+            {/* Subtle background activity chart decoration */}
+            <Activity className="absolute -bottom-2 -right-2 w-16 h-16 text-indigo-500/10 -rotate-12" />
+            
             <h3 className="font-semibold text-slate-50 mb-4">Session Stats</h3>
-            <div className="space-y-3">
+            <div className="space-y-3 relative z-10">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-400 flex items-center gap-1">
                   <HelpCircle className="w-3 h-3" /> Questions Asked
                 </span>
-                <span className="text-sm font-bold text-slate-50">{sessionData.stats.questionsAsked}</span>
+                <span className="text-sm font-bold text-slate-50">{sessionStats.questionsAsked}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-slate-400 flex items-center gap-1">
                   <span>&#10003;</span> Correct Answers
                 </span>
-                <span className="text-sm font-bold text-green-400">
-                  {sessionData.stats.correctAnswers}/{sessionData.stats.questionsAsked}
+                <span className="text-sm font-bold text-emerald-400">
+                  {sessionStats.correctAnswers}/{sessionStats.totalAnswered}
                 </span>
               </div>
               <div className="pt-2 border-t border-slate-700/50 flex items-center justify-between">
                 <span className="text-xs text-slate-400 flex items-center gap-1">
                   <Lightbulb className="w-3 h-3" /> Confidence
                 </span>
-                <span className="text-sm font-bold text-cyan-300">{sessionData.stats.currentConfidence}%</span>
+                <span className="text-sm font-bold text-cyan-300">{sessionStats.confidence}%</span>
               </div>
             </div>
           </motion.div>

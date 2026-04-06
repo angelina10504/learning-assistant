@@ -14,10 +14,8 @@ const sessionService = {
   },
 
   // POST /api/sessions/:id/end
-  endSession: (sessionId, duration) => {
-    const data = {};
-    if (duration !== undefined) data.duration = duration;
-    return api.post(`/sessions/${sessionId}/end`, data);
+  endSession: (sessionId, sessionData = {}) => {
+    return api.post(`/sessions/${sessionId}/end`, sessionData);
   },
 
   // GET /api/sessions/dashboard

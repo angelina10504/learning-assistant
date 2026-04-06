@@ -105,16 +105,59 @@ router.get('/teaching', protect, authorize('teacher'), async (req, res) => {
             let avgCompletion = 0
 
             if (studentCount > 0) {
-                // Get all study plans for this class
-                const plans = await StudyPlan.find({ classId: cls._id })
-                if (plans.length > 0) {
-                    const totalProgress = plans.reduce((sum, p) => {
-                        const completed = p.topics.filter(t => t.status === 'completed').length
-                        const progress = p.topics.length > 0 ? (completed / p.topics.length) : 0
-                        return sum + progress
-                    }, 0)
-                    avgCompletion = Math.round((totalProgress / plans.length) * 100)
-                }
+                // Compute per-student progress, then average across ALL students
+                const studentProgressList = await Promise.all(
+                    cls.students.map(async (student) => {
+                        const studentId = student._id || student
+
+                        // --- Signal 1: Study plan topic completion (most reliable) ---
+                        let planProgress = 0
+                        const plans = await StudyPlan.find({ classId: cls._id, studentId })
+                        if (plans.length > 0) {
+                            const progressSum = plans.reduce((sum, p) => {
+                                const topicCount = p.topics.length
+                                const completedCount = p.topics.filter(t => t.status === 'completed').length
+                                const currentCount = p.topics.filter(t => t.status === 'current').length
+                                return sum + (topicCount > 0 ? (completedCount + currentCount * 0.3) / topicCount : 0)
+                            }, 0)
+                            planProgress = Math.min((progressSum / plans.length) * 100, 100)
+                        }
+
+                        // --- Signal 2: Session engagement (ALL sessions, not just ended) ---
+                        let sessionProgress = 0
+                        const allSessions = await StudySession.find({
+                            classId: cls._id,
+                            studentId
+                        }).sort({ startedAt: -1 }).limit(10)
+
+                        if (allSessions.length > 0) {
+                            // Use saved progressPercent if it's non-zero (from ended sessions with new code)
+                            const savedProgresses = allSessions.filter(s => (s.progressPercent || 0) > 0)
+                            if (savedProgresses.length > 0) {
+                                sessionProgress = savedProgresses.reduce((sum, s) => sum + s.progressPercent, 0) / savedProgresses.length
+                            } else {
+                                // Fallback: estimate progress from message count
+                                // More messages = more engagement. Cap at 80 to leave room for completion
+                                const totalMessages = allSessions.reduce((sum, s) => sum + (s.messages?.length || 0), 0)
+                                sessionProgress = Math.min(totalMessages * 3, 80)
+                            }
+                        }
+
+                        // Combine signals
+                        if (planProgress > 0 && sessionProgress > 0) {
+                            return (planProgress * 0.7) + (sessionProgress * 0.3)
+                        } else if (planProgress > 0) {
+                            return planProgress
+                        } else {
+                            return sessionProgress
+                        }
+                    })
+                )
+
+                // Average all students (including those at 0, so teacher sees true class average)
+                const totalProgress = studentProgressList.reduce((sum, p) => sum + p, 0)
+                avgCompletion = Math.round(totalProgress / studentProgressList.length)
+                console.log(`[DEBUG] Class: ${cls.name} | studentProgressList: ${JSON.stringify(studentProgressList)} | avgCompletion: ${avgCompletion}`)
             }
 
             return {
@@ -131,14 +174,68 @@ router.get('/teaching', protect, authorize('teacher'), async (req, res) => {
     }
 })
 
-// GET /api/classes/enrolled - Get student's enrolled classes
+
+// GET /api/classes/enrolled - Get student's enrolled classes with per-class progress
 router.get('/enrolled', protect, authorize('student'), async (req, res) => {
     try {
         const classes = await Class.find({ _id: { $in: req.user.enrolledClasses } })
             .populate('teacherId', 'name email')
             .populate('materials', 'originalName uploadedAt')
 
-        res.json(classes)
+        // For each class, compute this student's progress from their study plans
+        const classesWithProgress = await Promise.all(classes.map(async (cls) => {
+            let progress = 0
+            try {
+                // Get all study plans this student has for this class
+                const plans = await StudyPlan.find({
+                    classId: cls._id,
+                    studentId: req.user._id
+                })
+
+                if (plans.length > 0) {
+                    const progressSum = plans.reduce((sum, p) => {
+                        const topicCount = p.topics.length
+                        const completedCount = p.topics.filter(t => t.status === 'completed').length
+                        const currentCount = p.topics.filter(t => t.status === 'current').length
+                        return sum + (topicCount > 0 ? (completedCount + currentCount * 0.3) / topicCount : 0)
+                    }, 0)
+                    progress = Math.round((progressSum / plans.length) * 100)
+                }
+
+                // Also blend with session progress (all sessions, not just ended)
+                const sessions = await StudySession.find({
+                    classId: cls._id,
+                    studentId: req.user._id
+                }).sort({ startedAt: -1 }).limit(10)
+
+                if (sessions.length > 0) {
+                    const savedProgresses = sessions.filter(s => (s.progressPercent || 0) > 0)
+                    if (savedProgresses.length > 0) {
+                        const sessionProgress = savedProgresses.reduce((sum, s) => sum + s.progressPercent, 0) / savedProgresses.length
+                        progress = progress > 0
+                            ? Math.round((progress * 0.7) + (sessionProgress * 0.3))
+                            : Math.round(sessionProgress)
+                    } else if (progress === 0) {
+                        // Fallback: estimate from message count
+                        const totalMessages = sessions.reduce((sum, s) => sum + (s.messages?.length || 0), 0)
+                        progress = Math.min(totalMessages * 3, 60)
+                    }
+                }
+            } catch (err) {
+                console.error(`[ENROLLED ERROR] Class ${cls.name}:`, err.message)
+                // If any error, just return 0 progress
+            }
+
+            console.log(`[ENROLLED DEBUG] Class: ${cls.name} | progress: ${progress}`)
+            return {
+                ...cls.toObject(),
+                id: cls._id,
+                teacherName: cls.teacherId?.name || 'Instructor',
+                progress
+            }
+        }))
+
+        res.json(classesWithProgress)
     } catch (error) {
         res.status(500).json({ message: error.message })
     }
@@ -352,18 +449,37 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
         const studentStatsMap = new Map()
         const topicProgressMap = new Map()
 
-        // 1. Process Study Plans for baseline topic progress
+        // 1. Process Study Plans for baseline topic progress + per-student plan progress
+        const studentPlanProgressMap = new Map() // studentId -> { completed, current, total }
         plans.forEach(plan => {
+            const sid = plan.studentId?.toString()
+
             plan.topics.forEach(topic => {
+                // Aggregate topic confidence for the chart
                 if (!topicProgressMap.has(topic.name)) {
                     topicProgressMap.set(topic.name, { confSum: 0, count: 0 })
                 }
                 const tp = topicProgressMap.get(topic.name)
-                // Use priorKnowledge as initial confidence proxy
-                const baseConf = topic.priorKnowledge === 'strong' ? 85 : (topic.priorKnowledge === 'partial' ? 55 : 25)
+                const baseConf = topic.status === 'completed' ? 100
+                    : topic.status === 'current' ? 50
+                    : topic.priorKnowledge === 'strong' ? 85
+                    : topic.priorKnowledge === 'partial' ? 55 : 25
                 tp.confSum += baseConf
                 tp.count += 1
             })
+
+            // Track per-student plan progress
+            if (sid) {
+                if (!studentPlanProgressMap.has(sid)) {
+                    studentPlanProgressMap.set(sid, { completed: 0, current: 0, total: 0 })
+                }
+                const sp = studentPlanProgressMap.get(sid)
+                plan.topics.forEach(t => {
+                    sp.total += 1
+                    if (t.status === 'completed') sp.completed += 1
+                    else if (t.status === 'current') sp.current += 1
+                })
+            }
         })
 
         // 2. Process Study Sessions for actual performance data
@@ -376,25 +492,31 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
                     id: studentId,
                     name: s.studentId.name,
                     email: s.studentId.email,
-                    topicsCompleted: 0,
                     timeStudied: 0,
-                    progressRaw: 0,
                     sessionCount: 0,
+                    messageCount: 0,
                     weakAreas: new Set(),
                     lastActive: s.startedAt,
                     confidenceSum: 0,
-                    confidenceCount: 0
+                    confidenceCount: 0,
+                    savedProgressSum: 0,
+                    savedProgressCount: 0
                 })
             }
             
             const stats = studentStatsMap.get(studentId)
             stats.sessionCount += 1
-            stats.topicsCompleted += s.completedTopics?.length || 0
+            stats.messageCount += s.messages?.length || 0
             stats.timeStudied += Math.round(calculateActiveDuration(s) / 60000)
             
+            // Collect saved progressPercent (from sessions ended with new code)
+            if ((s.progressPercent || 0) > 0) {
+                stats.savedProgressSum += s.progressPercent
+                stats.savedProgressCount += 1
+            }
+
             if (s.performanceMetrics?.avgConfidence) {
                 const conf = s.performanceMetrics.avgConfidence * 100
-                stats.progressRaw += conf
                 stats.confidenceSum += conf
                 stats.confidenceCount += 1
                 
@@ -440,27 +562,80 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
             confidence: data.count > 0 ? Math.round(data.confSum / data.count) : 0
         })).sort((a, b) => a.topic.localeCompare(b.topic))
 
-        const students = Array.from(studentStatsMap.values()).map(s => ({
-            id: s.id,
-            name: s.name,
-            email: s.email,
-            topicsCompleted: s.topicsCompleted,
-            timeStudied: s.timeStudied > 60 ? parseFloat((s.timeStudied / 60).toFixed(1)) : 0,
-            progress: s.topicsCompleted > 0 ? Math.min(100, Math.round(s.progressRaw / s.topicsCompleted)) : (s.confidenceCount > 0 ? Math.round(s.confidenceSum / s.confidenceCount) : 0),
-            sessionCount: s.sessionCount,
-            weakAreas: Array.from(s.weakAreas),
-            confidence: s.confidenceCount > 0 ? Math.round(s.confidenceSum / s.confidenceCount) : 0,
-            lastActive: s.lastActive
-        })).sort((a, b) => b.progress - a.progress)
+        // Merge session stats + plan progress into final student list
+        // Also include students who have plans but no sessions
+        const allStudentIds = new Set([
+            ...Array.from(studentStatsMap.keys()),
+            ...Array.from(studentPlanProgressMap.keys())
+        ])
+
+        const students = Array.from(allStudentIds).map(sid => {
+            const s = studentStatsMap.get(sid)
+            const planData = studentPlanProgressMap.get(sid)
+
+            // --- Compute progress ---
+            let progress = 0
+
+            // Signal 1: Study plan topic completion (most reliable)
+            if (planData && planData.total > 0) {
+                const planScore = ((planData.completed + planData.current * 0.3) / planData.total) * 100
+                progress = Math.min(planScore, 100)
+            }
+
+            // Signal 2: Saved progressPercent from new session end flow
+            if (s && s.savedProgressCount > 0) {
+                const sessionScore = s.savedProgressSum / s.savedProgressCount
+                progress = planData?.total > 0
+                    ? (progress * 0.7) + (sessionScore * 0.3)
+                    : sessionScore
+            }
+
+            // Signal 3: Fallback to message count engagement if progress still 0
+            if (progress === 0 && s && s.messageCount > 0) {
+                progress = Math.min(s.messageCount * 3, 60)
+            }
+
+            progress = Math.round(progress)
+
+            // If student was found in sessions, use their data; else use minimal info from plan
+            if (s) {
+                return {
+                    id: s.id,
+                    name: s.name,
+                    email: s.email,
+                    topicsCompleted: planData?.completed || 0,
+                    timeStudied: s.timeStudied > 60 ? parseFloat((s.timeStudied / 60).toFixed(1)) : 0,
+                    progress,
+                    sessionCount: s.sessionCount,
+                    weakAreas: Array.from(s.weakAreas),
+                    confidence: s.confidenceCount > 0 ? Math.round(s.confidenceSum / s.confidenceCount) : 0,
+                    lastActive: s.lastActive
+                }
+            }
+
+            // Student only has plans, no sessions yet
+            return {
+                id: sid,
+                name: 'Student',
+                email: '',
+                topicsCompleted: planData?.completed || 0,
+                timeStudied: 0,
+                progress,
+                sessionCount: 0,
+                weakAreas: [],
+                confidence: 0,
+                lastActive: null
+            }
+        }).sort((a, b) => b.progress - a.progress)
 
         const analytics = {
             totalSessions: sessions.length,
-            totalStudents: new Set([...sessions.map(s => s.studentId?._id?.toString()), ...plans.map(p => p.studentId.toString())].filter(Boolean)).size,
+            totalStudents: allStudentIds.size,
             averageConfidence: sessions.length > 0
                 ? Math.round((sessions.reduce((sum, s) => sum + (s.performanceMetrics?.avgConfidence || 0), 0) / sessions.length) * 100)
                 : 0,
             weakTopics,
-            students, // Renamed from topPerformers to be more generic
+            students,
             topicProgressData
         }
 

@@ -93,7 +93,11 @@ const studySessionSchema = new mongoose.Schema({
             type: Number,
             default: 0
         }
-    }
+    },
+    questionsAsked: { type: Number, default: 0 },
+    correctAnswers: { type: Number, default: 0 },
+    confidence: { type: Number, default: 0 },
+    progressPercent: { type: Number, default: 0 }
 })
 
 module.exports = mongoose.model('StudySession', studySessionSchema)

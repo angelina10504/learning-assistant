@@ -37,9 +37,9 @@ const TeacherDashboard = () => {
       const mappedClasses = (Array.isArray(classesData) ? classesData : []).map(cls => ({
         ...cls,
         id: cls._id || cls.id,
-        studentCount: cls.students?.length || 0,
-        materialCount: cls.materials?.length || 0,
-        avgCompletion: 0 // Default to 0, will be updated by class-specific analytics or set to real value
+        studentCount: cls.studentCount || cls.students?.length || 0,
+        materialCount: cls.materialCount || cls.materials?.length || 0,
+        avgCompletion: cls.avgCompletion || 0, // Real value from /teaching backend
       }));
       
       setClasses(mappedClasses);

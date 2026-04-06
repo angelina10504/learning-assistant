@@ -433,6 +433,15 @@ router.post('/:id/message', protect, authorize('student'), async (req, res) => {
         const genaiUrl = process.env.GENAI_URL || 'http://localhost:8000'
 
         try {
+            // Ensure performanceMetrics is initialized for legacy sessions
+            if (!session.performanceMetrics) {
+                session.performanceMetrics = {
+                    questionsAnswered: 0,
+                    correctCount: 0,
+                    avgConfidence: 0
+                }
+            }
+
             // Use class-level collection (all materials in a class share one vector store)
             let collectionName = `class_${session.classId}`
             if (session.documentId) {
@@ -471,13 +480,36 @@ router.post('/:id/message', protect, authorize('student'), async (req, res) => {
             const toolsUsed = (agentResponse.data.tools_used || []).map(t => t.name || t)
             const structuredData = agentResponse.data.structured_data || []
 
-            // Extract weak topics and completed topics from structured data
+            // Extract metadata from structured data
             const weakTopics = structuredData
                 .filter(d => d.action === 'log_weak_topic')
                 .map(d => ({ topic: d.topic, confidenceScore: 0.3 }))
             const completedTopics = structuredData
                 .filter(d => d.action === 'mark_completed')
                 .map(d => d.topic)
+            
+            // Update performance metrics based on agent signaling
+            structuredData.forEach(d => {
+                if (d.action === 'question_asked') {
+                    session.performanceMetrics.questionsAnswered += 1
+                } else if (d.action === 'evaluation') {
+                    if (d.correct) {
+                        session.performanceMetrics.correctCount += 1
+                    }
+                    // If for some reason questionsAnswered is behind, sync it
+                    if (session.performanceMetrics.correctCount > session.performanceMetrics.questionsAnswered) {
+                        session.performanceMetrics.questionsAnswered = session.performanceMetrics.correctCount
+                    }
+                }
+            })
+
+            // Update average confidence based on metrics
+            if (session.performanceMetrics.questionsAnswered > 0) {
+                const accuracy = session.performanceMetrics.correctCount / session.performanceMetrics.questionsAnswered
+                // Mix with weak topics count for a general confidence score
+                const weakFactor = Math.max(0, 1 - (session.weakTopics.length * 0.1))
+                session.performanceMetrics.avgConfidence = (accuracy * 0.7) + (weakFactor * 0.3)
+            }
 
             // Add AI response to session
             session.messages.push({
@@ -517,9 +549,23 @@ router.post('/:id/message', protect, authorize('student'), async (req, res) => {
                 session: session
             })
         } catch (error) {
-            // If GenAI fails, still save the user message
-            await session.save()
-            res.status(500).json({ message: `Agent service error: ${error.message}` })
+            console.error('❌ Session Message Error:', error.response?.data || error.message);
+            // If it's a validation error, log the specifics
+            if (error.name === 'ValidationError') {
+                console.error('Validation Details:', error.errors);
+            }
+            
+            // If GenAI fails, still save the user message if it's new
+            try {
+                await session.save()
+            } catch (saveError) {
+                console.error('Failed to save session even without agent response:', saveError.message);
+            }
+            
+            res.status(500).json({ 
+                message: `Agent service error: ${error.response?.data?.detail || error.message}`,
+                error: error.message 
+            })
         }
     } catch (error) {
         res.status(500).json({ message: error.message })
@@ -542,13 +588,19 @@ router.post('/:id/end', protect, authorize('student'), async (req, res) => {
 
         // Update performance metrics
         const humanMessages = session.messages.filter(m => m.role === 'human').length
-        const correctAnswers = req.body?.correctCount || 0
+        const totalCorrect = req.body?.correctAnswers || req.body?.correctCount || 0
 
-        session.performanceMetrics.questionsAnswered = humanMessages
-        session.performanceMetrics.correctCount = correctAnswers
-        session.performanceMetrics.avgConfidence = session.weakTopics.length > 0
+        session.performanceMetrics.questionsAnswered = req.body?.questionsAsked || humanMessages
+        session.performanceMetrics.correctCount = totalCorrect
+        session.performanceMetrics.avgConfidence = req.body?.confidence !== undefined ? (req.body.confidence / 100) : (session.weakTopics.length > 0
             ? session.weakTopics.reduce((sum, t) => sum + (t.confidenceScore || 0), 0) / session.weakTopics.length
-            : (session.performanceMetrics?.avgConfidence || 0)
+            : (session.performanceMetrics?.avgConfidence || 0))
+
+        // Save new aggregated stats
+        session.questionsAsked = req.body?.questionsAsked || session.performanceMetrics.questionsAnswered
+        session.correctAnswers = totalCorrect
+        session.confidence = req.body?.confidence || (session.performanceMetrics.avgConfidence * 100)
+        session.progressPercent = req.body?.progressPercent || 0
 
         // Save final duration
         if (req.body.duration !== undefined) {
