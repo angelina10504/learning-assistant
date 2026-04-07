@@ -28,6 +28,20 @@ const StudentDashboard = () => {
   const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [joinError, setJoinError] = useState('');
   const [joiningClass, setJoiningClass] = useState(false);
+  const [activeStatuses, setActiveStatuses] = useState({});
+
+  const stripMarkdown = (text) => {
+    if (!text) return '';
+    const stripped = text
+      .replace(/\*\*(.*?)\*\*/g, '$1')     // bold
+      .replace(/\*(.*?)\*/g, '$1')          // italic
+      .replace(/#{1,6}\s/g, '')             // headings
+      .replace(/={3,}/g, '')                // === dividers
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')    // inline code
+      .replace(/\n+/g, ' ')                 // newlines to space
+      .trim();
+    return stripped.length > 80 ? stripped.substring(0, 80) + '...' : stripped;
+  };
 
   useEffect(() => {
     const fetchClasses = async () => {
@@ -69,8 +83,18 @@ const StudentDashboard = () => {
       }
     };
 
+    const fetchActiveStatus = async () => {
+      try {
+        const response = await sessionService.getActiveStatus();
+        setActiveStatuses(response.data);
+      } catch (err) {
+         console.error('Fetch active status error', err);
+      }
+    };
+
     fetchClasses();
     fetchDashboard();
+    fetchActiveStatus();
   }, []);
 
   const handleJoinClass = async (classCode) => {
@@ -112,15 +136,17 @@ const StudentDashboard = () => {
     navigate(`/student/session/${sessionId}`);
   };
 
-  const startNewSession = async (classId) => {
-    try {
-      const response = await sessionService.startSession(classId);
-      const newSession = response.data;
-      toast.success('Study session started!');
-      navigate(`/student/session/${newSession._id || newSession.id}`);
-    } catch (err) {
-      console.error('Start session error:', err);
-      toast.error(err.response?.data?.message || 'Failed to start session');
+  const startNewSession = (classId) => {
+    const status = activeStatuses[classId];
+    if (status?.activeSessionId) {
+      // Case 3: Active session exists → resume it
+      navigate(`/student/session/${status.activeSessionId}`);
+    } else if (status?.planId) {
+      // Case 2: Plan exists but no active session → go pick a topic
+      navigate(`/student/plan/${status.planId}`);
+    } else {
+      // Case 1: No plan at all → go to class page to generate one first
+      navigate(`/student/class/${classId}`);
     }
   };
 
@@ -208,7 +234,7 @@ const StudentDashboard = () => {
                   <BookMarked className="w-5 h-5" />
                   {sessions[0].topicName}
                 </h3>
-                <p className="text-sm text-slate-300 mb-2">{sessions[0].lastContext}</p>
+                <p className="text-sm text-slate-300 mb-2">{stripMarkdown(sessions[0].lastContext)}</p>
                 <p className="text-xs text-slate-400">
                   {sessions[0].className} • Session {sessions[0].sessionNumber}
                 </p>
@@ -312,10 +338,12 @@ const StudentDashboard = () => {
                           e.stopPropagation();
                           startNewSession(cls.id);
                         }}
-                        className="btn-primary text-sm w-full flex items-center justify-center gap-2"
+                        className={`text-sm w-full flex items-center justify-center gap-2 ${
+                          activeStatuses[cls.id]?.activeSessionId ? 'btn-secondary text-indigo-400 border-indigo-500/50 hover:bg-indigo-500/10' : 'btn-primary'
+                        }`}
                       >
                         <Play className="w-4 h-4" />
-                        Start Study Session
+                        {activeStatuses[cls.id]?.activeSessionId ? 'Resume Session →' : 'Start Study Session'}
                       </button>
                     </motion.div>
                   ))}

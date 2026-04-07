@@ -23,6 +23,11 @@ const sessionService = {
     return api.get('/sessions/dashboard');
   },
 
+  // GET /api/sessions/active-status
+  getActiveStatus: () => {
+    return api.get('/sessions/active-status');
+  },
+
   // GET /api/sessions
   getSessions: () => {
     return api.get('/sessions');
@@ -62,6 +67,15 @@ const sessionService = {
   // DELETE /api/sessions/plans/:id
   deletePlan: (planId) => {
     return api.delete(`/sessions/plans/${planId}`);
+  },
+  // POST /api/sessions/final-quiz
+  getFinalQuiz: (classId, topicName, retryAttempt = false) => {
+    return api.post('/sessions/final-quiz', { classId, topicName, retryAttempt });
+  },
+
+  // POST /api/sessions/final-quiz/submit
+  submitFinalQuiz: (sessionId, classId, topicName, answers) => {
+    return api.post('/sessions/final-quiz/submit', { sessionId, classId, topicName, answers });
   },
 };
 

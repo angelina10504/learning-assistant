@@ -8,6 +8,7 @@ import ChatMessage from '../../components/student/ChatMessage';
 import QuizMessage, { parseQuizFromMessage } from '../../components/student/QuizMessage';
 import TopicRoadmap from '../../components/student/TopicRoadmap';
 import sessionService from '../../services/sessionService';
+import FinalQuizModal from '../../components/student/FinalQuizModal';
 import { Activity, CheckCircle2 } from 'lucide-react';
 
 const StudySession = () => {
@@ -22,6 +23,7 @@ const StudySession = () => {
   const [sending, setSending] = useState(false);
   const [sessionTime, setSessionTime] = useState(0);
   const [endingSession, setEndingSession] = useState(false);
+  const [showQuizModal, setShowQuizModal] = useState(false);
   const [autoMessageSent, setAutoMessageSent] = useState(false);
   const [sessionStartTime] = useState(Date.now());
   const [progress, setProgress] = useState(0);
@@ -53,6 +55,7 @@ const StudySession = () => {
           id: apiData._id || apiData.id,
           topicName: apiData.topicName || apiData.classId?.name || 'Study Session',
           className: apiData.classId?.name || 'Unknown Class',
+          classId: apiData.classId?._id || apiData.classId,
           planId: apiData.planId?._id || apiData.planId || null,
           topicIndex: apiData.topicIndex,
           stats: {
@@ -206,6 +209,8 @@ const StudySession = () => {
 
   // Fix 5: handleQuizAnswer receives (isCorrect, selectedLetter, correctLetter)
   const handleQuizAnswer = (isCorrect, selectedLetter, correctLetter) => {
+    if (endingSession) return; // Prevent answering quizzes if session is already ended
+
     setSessionStats(prev => {
       const newCorrect = prev.correctAnswers + (isCorrect ? 1 : 0);
       const newTotal = prev.totalAnswered + 1;
@@ -246,6 +251,11 @@ const StudySession = () => {
         };
         setMessages((prev) => [...prev, aiMessage]);
 
+        // Automatically trigger quiz modal if completed
+        if (response.data.session.completedTopics?.includes(sessionData.topicName)) {
+          setShowQuizModal(true);
+        }
+
         // Update session data with latest from backend
         if (response.data.session) {
           setSessionData((prev) => ({
@@ -260,8 +270,15 @@ const StudySession = () => {
           }));
         }
       }
-    } catch (err) {
-      console.error('Error sending message:', err);
+    } catch (error) {
+      if (error.response?.status === 400 && error.response?.data?.message === 'Session has ended') {
+        toast.error('This session has already been ended.');
+        setEndingSession(true);
+        setSending(false);
+        return; // Don't add an AI error bubble
+      }
+
+      console.error('Error sending message:', error);
       const errorMessage = {
         role: 'ai',
         content: 'Sorry, I encountered an error processing your request. Please try again.',
@@ -293,9 +310,12 @@ const StudySession = () => {
     setInputValue(actions[action]);
   };
 
-  const handleEndSession = async () => {
-    if (!window.confirm('Are you sure you want to end this session?')) return;
+  const handleSkipAndEnd = async () => {
+    if (!window.confirm('Are you sure you want to end without taking the final assessment? Your topic progress won\'t be completed.')) return;
+    performEndSession();
+  };
 
+  const performEndSession = async () => {
     setEndingSession(true);
     try {
       const endData = {
@@ -400,22 +420,28 @@ const StudySession = () => {
               </div>
               
               {progress >= 95 || (sessionStats.totalAnswered >= 5 && sessionStats.confidence >= 70) ? (
-                <button
-                  onClick={handleEndSession}
-                  disabled={endingSession}
-                  className="btn-primary text-sm flex items-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  {endingSession ? 'Wrapping up...' : 'Finish Topic'}
-                </button>
+                <div className="flex flex-col items-end">
+                  <button
+                    onClick={() => setShowQuizModal(true)}
+                    disabled={endingSession}
+                    className="btn-primary text-sm flex items-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Finish Topic
+                  </button>
+                  <button onClick={handleSkipAndEnd} className="text-[10px] text-slate-400 hover:text-slate-300 mt-1">Skip Assessment & End</button>
+                </div>
               ) : (
-                <button
-                  onClick={handleEndSession}
-                  disabled={endingSession}
-                  className="btn-danger text-sm"
-                >
-                  {endingSession ? 'Ending...' : 'End Session'}
-                </button>
+                <div className="flex flex-col items-end">
+                  <button
+                    onClick={() => setShowQuizModal(true)}
+                    disabled={endingSession}
+                    className="btn-danger text-sm"
+                  >
+                    End Session
+                  </button>
+                  <button onClick={handleSkipAndEnd} className="text-[10px] text-slate-400 hover:text-slate-300 mt-1">Skip Assessment & End</button>
+                </div>
               )}
             </div>
           </div>
@@ -455,6 +481,7 @@ const StudySession = () => {
                           options={parsed.options}
                           correctLetter={parsed.correctLetter}
                           onAnswer={handleQuizAnswer}
+                          disabled={endingSession}
                         />
                       </>
                     ) : (
@@ -603,6 +630,20 @@ const StudySession = () => {
           )}
         </div>
       </main>
+
+      {sessionData && (
+        <FinalQuizModal
+          isOpen={showQuizModal}
+          onClose={() => setShowQuizModal(false)}
+          topicName={sessionData.topicName}
+          classId={sessionData.classId}
+          sessionId={sessionId}
+          onComplete={(passed) => {
+             setShowQuizModal(false);
+             performEndSession();
+          }}
+        />
+      )}
     </div>
   );
 };

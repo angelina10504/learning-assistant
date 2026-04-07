@@ -20,7 +20,7 @@ import Navbar from '../../components/shared/Navbar';
 import Badge from '../../components/shared/Badge';
 import ProgressBar from '../../components/shared/ProgressBar';
 import sessionService from '../../services/sessionService';
-import { ShieldAlert, Info } from 'lucide-react';
+import { ShieldAlert, Info, AlertTriangle } from 'lucide-react';
 
 const StudyPlanView = () => {
   const { id: planId } = useParams();
@@ -62,7 +62,7 @@ const StudyPlanView = () => {
   };
 
   const handleStartTopic = async (topic, index) => {
-    if (topic.status === 'locked') {
+    if (topic.status === 'pending') {
       toast.error('Complete the previous topic first!');
       return;
     }
@@ -94,7 +94,7 @@ const StudyPlanView = () => {
     : 0;
 
   const completedCount = plan?.topics.filter(t => t.status === 'completed').length || 0;
-  const currentTopic = plan?.topics.find(t => t.status === 'current');
+  const currentTopic = plan?.topics.find(t => t.status === 'in_progress' || t.status === 'needs_review');
 
   const getDifficultyColor = (d) => {
     if (d === 'beginner') return 'green';
@@ -111,18 +111,25 @@ const StudyPlanView = () => {
 
   const prioritizedCount = plan?.topics.filter(t => t.priority === 'high').length || 0;
 
-  const getStatusIcon = (status) => {
+  const isUnlocked = (index) => {
+    if (index === 0) return true;
+    return sortedTopics[index - 1].status === 'completed';
+  };
+
+  const getStatusIcon = (status, unlocked) => {
     switch (status) {
       case 'completed': return <CheckCircle2 className="w-6 h-6 text-green-400" />;
-      case 'current': return <Circle className="w-6 h-6 text-cyan-400 fill-cyan-500" />;
-      default: return <Lock className="w-6 h-6 text-slate-600" />;
+      case 'in_progress': return <Circle className="w-6 h-6 text-cyan-400 fill-cyan-500" />;
+      case 'needs_review': return <AlertTriangle className="w-6 h-6 text-amber-500" />;
+      default: return unlocked ? <Circle className="w-6 h-6 text-slate-500 fill-slate-700" /> : <Lock className="w-6 h-6 text-slate-600" />;
     }
   };
 
   const getNodeStyle = (status) => {
     switch (status) {
       case 'completed': return 'border-green-500 bg-green-500/10';
-      case 'current': return 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/10';
+      case 'in_progress': return 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/10';
+      case 'needs_review': return 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10';
       default: return 'border-slate-700 bg-slate-800/50 opacity-60';
     }
   };
@@ -256,8 +263,9 @@ const StudyPlanView = () => {
               // Find original index for starting session (since we sorted)
               const originalIdx = plan.topics.findIndex(t => t.name === topic.name);
               const isExpanded = expandedTopic === idx;
-              const isCurrent = topic.status === 'current';
-              const isClickable = topic.status !== 'locked';
+              const isCurrent = topic.status === 'in_progress';
+              const unlocked = isUnlocked(idx);
+              const isClickable = unlocked;
 
               return (
                 <motion.div
@@ -271,7 +279,7 @@ const StudyPlanView = () => {
                   <div className={`absolute left-4 top-4 w-7 h-7 rounded-full flex items-center justify-center z-10 bg-slate-900 ${
                     isCurrent ? 'ring-4 ring-cyan-500/30' : ''
                   }`}>
-                    {getStatusIcon(topic.status)}
+                    {getStatusIcon(topic.status, unlocked)}
                   </div>
 
                   {/* Topic card */}
@@ -286,7 +294,7 @@ const StudyPlanView = () => {
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                           <span className="text-xs text-slate-500 font-mono">#{idx + 1}</span>
                           <h3 className={`font-semibold text-sm ${
-                            topic.status === 'locked' ? 'text-slate-500' : 'text-slate-50'
+                            topic.status === 'pending' ? 'text-slate-500' : 'text-slate-50'
                           }`}>
                             {topic.name}
                           </h3>
@@ -305,12 +313,17 @@ const StudyPlanView = () => {
                           {isCurrent && (
                             <Badge color="cyan" className="text-xs">Up Next</Badge>
                           )}
+                          {topic.status === 'needs_review' && (
+                            <Badge color="amber" className="text-xs flex items-center gap-1">
+                              <AlertTriangle size={12} /> Needs Review
+                            </Badge>
+                          )}
                           {topic.priority === 'high' && (
                             <Badge color="red" className="text-xs flex items-center gap-1">
                               <ShieldAlert size={12} /> Focus Area
                             </Badge>
                           )}
-                          {topic.priorKnowledge === 'strong' && (
+                          {topic.priority === 'low' && (
                             <Badge color="green" className="text-xs flex items-center gap-1">
                               <CheckCircle2 size={12} /> Quick Review
                             </Badge>
@@ -319,17 +332,23 @@ const StudyPlanView = () => {
                       </div>
 
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {(isCurrent || topic.status === 'completed') && (
+                        {topic.status === 'completed' ? (
+                          <div className="flex items-center gap-2 text-green-400 px-2">
+                            <CheckCircle2 size={18} />
+                          </div>
+                        ) : unlocked ? (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleStartTopic(topic, originalIdx);
                             }}
                             disabled={startingSession === originalIdx}
-                            className={`text-xs py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition-colors ${
-                              isCurrent
+                            className={`text-xs py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition-colors font-medium ${
+                              topic.status === 'needs_review'
+                                ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                                : topic.status === 'in_progress'
                                 ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
-                                : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+                                : 'bg-indigo-600 hover:bg-indigo-500 text-white'
                             }`}
                           >
                             {startingSession === originalIdx ? (
@@ -337,9 +356,13 @@ const StudyPlanView = () => {
                             ) : (
                               <Play size={12} />
                             )}
-                            {isCurrent ? 'Study' : 'Review'}
+                            {topic.status === 'needs_review' 
+                              ? 'Retry Quiz' 
+                              : topic.status === 'in_progress' 
+                              ? 'Continue Session' 
+                              : 'Start Topic'}
                           </button>
-                        )}
+                        ) : null}
                         {isClickable && (
                           isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />
                         )}

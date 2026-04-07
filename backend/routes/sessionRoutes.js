@@ -7,6 +7,8 @@ const StudySession = require('../models/StudySession')
 const StudyPlan = require('../models/StudyPlan')
 const Class = require('../models/Class')
 const Document = require('../models/Document')
+const TopicQuiz = require('../models/TopicQuiz')
+const QuizResult = require('../models/QuizResult')
 
 // Helper logic for calculating exact active interaction time based on AI interaction
 function calculateActiveDuration(session) {
@@ -130,6 +132,147 @@ router.get('/dashboard', protect, authorize('student'), async (req, res) => {
     }
 })
 
+// POST /api/sessions/final-quiz - Get or generate final quiz
+router.post('/final-quiz', protect, authorize('student'), async (req, res) => {
+    console.log('[final-quiz] received:', req.body)
+    try {
+        const { classId, topicName, retryAttempt } = req.body
+
+        if (!classId || !topicName) {
+            return res.status(400).json({ message: 'Class ID and topic name are required' })
+        }
+
+        // Check if quiz already exists
+        let quiz = await TopicQuiz.findOne({ classId, topicName }).sort({ attemptVariant: -1 })
+
+        if (quiz && !retryAttempt) {
+            return res.json(quiz)
+        }
+
+        const nextVariant = quiz ? (quiz.attemptVariant || 1) + 1 : 1;
+
+        // Generate new quiz via GenAI service
+        const genaiUrl = process.env.GENAI_URL || 'http://localhost:8000'
+        const response = await axios.post(`${genaiUrl}/agent/final-quiz`, {
+            classId,
+            topicName,
+            studentId: req.user._id.toString()
+        })
+
+        const quizData = response.data
+
+        // Save to cache
+        quiz = await TopicQuiz.create({
+            classId,
+            topicName,
+            quizId: quizData.quizId,
+            questions: quizData.questions,
+            attemptVariant: nextVariant
+        })
+
+        res.json(quiz)
+    } catch (error) {
+        const genaiStatus = error?.response?.status
+        const genaiData = error?.response?.data
+        console.error('[final-quiz] error:', error.message)
+        console.error('[final-quiz] fastapi status:', genaiStatus)
+        console.error('[final-quiz] fastapi response:', JSON.stringify(genaiData))
+        console.error('[final-quiz] stack:', error.stack)
+        const detail = genaiData?.detail
+        if (typeof detail === 'object' && detail !== null) {
+            return res.status(genaiStatus || 500).json(detail)
+        }
+        res.status(genaiStatus || 500).json({ message: detail || genaiData?.message || `Failed to generate quiz: ${error.message}` })
+    }
+})
+
+// POST /api/sessions/final-quiz/submit - Submit final quiz answers
+router.post('/final-quiz/submit', protect, authorize('student'), async (req, res) => {
+    try {
+        const { sessionId, classId, topicName, answers } = req.body
+
+        if (!classId || !topicName || !answers) {
+            return res.status(400).json({ message: 'Missing required fields' })
+        }
+
+        const quiz = await TopicQuiz.findOne({ classId, topicName }).sort({ attemptVariant: -1 })
+        if (!quiz) {
+            return res.status(404).json({ message: 'Quiz not found' })
+        }
+
+        let correctCount = 0
+        const processedAnswers = answers.map(ans => {
+            const question = quiz.questions.find(q => q.id === ans.questionId)
+            const isCorrect = question.correctLetter === ans.selectedLetter
+            if (isCorrect) correctCount++
+
+            return {
+                questionId: ans.questionId,
+                selectedLetter: ans.selectedLetter,
+                correctLetter: question.correctLetter,
+                isCorrect,
+                explanation: question.explanation,
+                wrongAnswerReason: !isCorrect 
+                   ? (question.wrongAnswerReasons && typeof question.wrongAnswerReasons.get === 'function'
+                         ? question.wrongAnswerReasons.get(ans.selectedLetter)
+                         : question.wrongAnswerReasons?.[ans.selectedLetter] || "")
+                   : null
+            }
+        })
+
+        const score = Math.round((correctCount / quiz.questions.length) * 100)
+        const passed = score >= 70
+
+        // Find existing attempts to get attemptNumber
+        const previousAttempts = await QuizResult.countDocuments({ studentId: req.user._id, classId, topicName })
+        const attemptNumber = previousAttempts + 1
+
+        const result = await QuizResult.create({
+            studentId: req.user._id,
+            classId,
+            topicName,
+            sessionId: sessionId || null,
+            answers: processedAnswers,
+            score,
+            passed,
+            attemptNumber
+        })
+
+        // Update StudyPlan topic status
+        const plan = await StudyPlan.findOne({ studentId: req.user._id, classId })
+        if (plan) {
+            const topicIndex = plan.topics.findIndex(t => t.name === topicName)
+            if (topicIndex !== -1) {
+                plan.topics[topicIndex].finalQuizScore = score
+                plan.topics[topicIndex].quizAttempts = attemptNumber
+
+                if (passed) {
+                    plan.topics[topicIndex].status = 'completed'
+                    
+                    // Check if entire plan is completed
+                    const allCompleted = plan.topics.every(t => t.status === 'completed')
+                    if (allCompleted) {
+                        plan.completedAt = new Date()
+                    }
+                } else {
+                    plan.topics[topicIndex].status = 'needs_review'
+                }
+                
+                await plan.save()
+            }
+        }
+
+        res.json({
+            passed,
+            score,
+            results: processedAnswers,
+            attemptNumber
+        })
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
 // POST /api/sessions/pre-assessment-questions - Get diagnostic questions
 router.post('/pre-assessment-questions', protect, authorize('student'), async (req, res) => {
     try {
@@ -201,7 +344,7 @@ router.post('/generate-plan', protect, authorize('student'), async (req, res) =>
                 subtopics: t.subtopics || [],
                 estimatedMinutes: t.estimatedMinutes || 30,
                 difficulty: t.difficulty || 'intermediate',
-                status: i === 0 ? 'current' : 'locked',
+                status: 'pending',
                 order: t.order || i + 1,
                 priority: t.priority || 'medium',
                 priorKnowledge: t.priorKnowledge || 'none',
@@ -296,13 +439,6 @@ router.patch('/plans/:planId/topics/:topicIndex', protect, authorize('student'),
 
         plan.topics[idx].status = status
 
-        // Auto-advance next topic to 'current' when completing
-        if (status === 'completed' && idx + 1 < plan.topics.length) {
-            if (plan.topics[idx + 1].status === 'locked') {
-                plan.topics[idx + 1].status = 'current'
-            }
-        }
-
         // Check if all topics completed
         const allCompleted = plan.topics.every(t => t.status === 'completed')
         if (allCompleted) {
@@ -323,6 +459,13 @@ router.post('/start', protect, authorize('student'), async (req, res) => {
 
         if (!classId) {
             return res.status(400).json({ message: 'Class ID is required' })
+        }
+
+        if (!topicName && !planId) {
+            return res.status(400).json({
+                error: 'topic_required',
+                message: 'Sessions must be started for a specific topic.'
+            })
         }
 
         // Verify class exists and student is enrolled
@@ -360,8 +503,10 @@ router.post('/start', protect, authorize('student'), async (req, res) => {
                 if (plan && plan.studentId.toString() === req.user._id.toString()) {
                     const idx = parseInt(topicIndex, 10)
                     if (idx >= 0 && idx < plan.topics.length && plan.topics[idx].status !== 'completed') {
-                        plan.topics[idx].status = 'current'
-                        await plan.save()
+                        if (plan.topics[idx].status === 'pending') {
+                            plan.topics[idx].status = 'in_progress'
+                            await plan.save()
+                        }
                     }
                 }
             }
@@ -385,6 +530,19 @@ router.post('/start', protect, authorize('student'), async (req, res) => {
                 correctCount: 0
             }
         })
+
+        if (planId && topicIndex !== undefined && topicIndex !== null) {
+            const plan = await StudyPlan.findById(planId)
+            if (plan && plan.studentId.toString() === req.user._id.toString()) {
+                const idx = parseInt(topicIndex, 10)
+                if (idx >= 0 && idx < plan.topics.length && plan.topics[idx].status !== 'completed') {
+                    if (plan.topics[idx].status === 'pending') {
+                        plan.topics[idx].status = 'in_progress'
+                        await plan.save()
+                    }
+                }
+            }
+        }
 
         res.status(201).json(session)
     } catch (error) {
@@ -609,32 +767,8 @@ router.post('/:id/end', protect, authorize('student'), async (req, res) => {
 
         session.endedAt = new Date()
 
-        // If session is linked to a plan, mark topic as completed and advance next
-        if (session.planId && session.topicIndex !== null && session.topicIndex !== undefined) {
-            try {
-                const plan = await StudyPlan.findById(session.planId)
-                if (plan && plan.studentId.toString() === req.user._id.toString()) {
-                    const idx = session.topicIndex
-                    if (idx >= 0 && idx < plan.topics.length) {
-                        plan.topics[idx].status = 'completed'
-
-                        // Advance next topic
-                        if (idx + 1 < plan.topics.length && plan.topics[idx + 1].status === 'locked') {
-                            plan.topics[idx + 1].status = 'current'
-                        }
-
-                        // Check if all completed
-                        if (plan.topics.every(t => t.status === 'completed')) {
-                            plan.completedAt = new Date()
-                        }
-
-                        await plan.save()
-                    }
-                }
-            } catch (planErr) {
-                console.error('Error updating plan on session end:', planErr.message)
-            }
-        }
+        // Note: Topic completion is now handled ONLY by the final-quiz flow.
+        // We no longer automatically mark a topic and advance to the next here.
 
         await session.save()
 
@@ -681,6 +815,41 @@ router.get('/:id', protect, async (req, res) => {
         }
 
         res.json(session)
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
+// GET /api/sessions/active-status - Get active session and plan ID per class
+router.get('/active-status', protect, authorize('student'), async (req, res) => {
+    try {
+        const studentId = req.user._id
+        const classes = req.user.enrolledClasses || []
+        
+        // Active session = has no endedAt (still open)
+        const activeSessions = await StudySession.find({
+            studentId,
+            classId: { $in: classes },
+            endedAt: { $exists: false }
+        })
+
+        const plans = await StudyPlan.find({
+            studentId,
+            classId: { $in: classes }
+        })
+
+        const statusMap = {}
+        for (const classId of classes) {
+            const activeSession = activeSessions.find(s => s.classId.toString() === classId.toString())
+            const plan = plans.find(p => p.classId.toString() === classId.toString())
+            
+            statusMap[classId.toString()] = {
+                activeSessionId: activeSession ? activeSession._id : null,
+                planId: plan ? plan._id : null
+            }
+        }
+
+        res.json(statusMap)
     } catch (error) {
         res.status(500).json({ message: error.message })
     }

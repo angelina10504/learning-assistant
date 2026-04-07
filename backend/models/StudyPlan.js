@@ -19,8 +19,8 @@ const planTopicSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['locked', 'current', 'completed'],
-        default: 'locked'
+        enum: ['locked', 'pending', 'current', 'in_progress', 'needs_review', 'completed'],
+        default: 'pending'
     },
     order: {
         type: Number,
@@ -38,7 +38,15 @@ const planTopicSchema = new mongoose.Schema({
     },
     pageRange: [{
         type: Number
-    }]
+    }],
+    finalQuizScore: {
+        type: Number,
+        default: null
+    },
+    quizAttempts: {
+        type: Number,
+        default: 0
+    }
 }, { _id: false })
 
 const studyPlanSchema = new mongoose.Schema({

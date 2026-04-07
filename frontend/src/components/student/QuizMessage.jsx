@@ -49,13 +49,13 @@ export function parseQuizFromMessage(text) {
   };
 }
 
-const QuizMessage = ({ questionText, options, correctLetter, onAnswer }) => {
+const QuizMessage = ({ questionText, options, correctLetter, onAnswer, disabled }) => {
   const [selectedLetter, setSelectedLetter] = useState(null);
   const [isCorrect, setIsCorrect] = useState(null);
   const [hasAnswered, setHasAnswered] = useState(false);
 
   const handleOptionClick = (letter) => {
-    if (hasAnswered) return;
+    if (hasAnswered || disabled) return;
 
     const correct = letter === correctLetter;
     setSelectedLetter(letter);
@@ -121,7 +121,7 @@ const QuizMessage = ({ questionText, options, correctLetter, onAnswer }) => {
                 <button
                   key={letter}
                   onClick={() => handleOptionClick(letter)}
-                  disabled={hasAnswered}
+                  disabled={hasAnswered || disabled}
                   className={buttonClass}
                 >
                   <span className="flex-1">{full}</span>

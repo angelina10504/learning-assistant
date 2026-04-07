@@ -516,15 +516,41 @@ Return ONLY valid JSON in this format:
                     except (ValueError, TypeError):
                         continue
             
+            topic_name = topic.get("name", f"Topic {i+1}")
+            
+            # Re-verify and enforce strict priority assignments based on assessment results
+            priority = "medium"
+            prior_knowledge = "partial"
+            
+            if request.assessment_results:
+                topic_name_lower = topic_name.lower()
+                matched_res = None
+                for res in request.assessment_results:
+                    res_topic_lower = res.topic.lower()
+                    if topic_name_lower in res_topic_lower or res_topic_lower in topic_name_lower:
+                        matched_res = res
+                        break
+                
+                if matched_res:
+                    if matched_res.correct:
+                        priority = "low"
+                        prior_knowledge = "strong"
+                    elif matched_res.skipped:
+                        priority = "medium"
+                        prior_knowledge = "partial"
+                    else:
+                        priority = "high"
+                        prior_knowledge = "none"
+
             plan_topics.append(PlanTopic(
-                name=topic.get("name", f"Topic {i+1}"),
+                name=topic_name,
                 subtopics=topic.get("subtopics", []),
                 estimatedMinutes=est_min,
                 difficulty=topic.get("difficulty", "intermediate"),
                 status="current" if i == 0 else "locked",
                 order=i + 1,
-                priority=topic.get("priority", "medium"),
-                priorKnowledge=topic.get("priorKnowledge", "none"),
+                priority=priority,
+                priorKnowledge=prior_knowledge,
                 pageRange=sanitized_page_range
             ))
             total_minutes += est_min
@@ -545,6 +571,116 @@ Return ONLY valid JSON in this format:
             detail=f"Error generating study plan: {str(e)}"
         )
 
+
+class FinalQuizRequest(BaseModel):
+    classId: str
+    topicName: str
+    studentId: str
+
+@router.post("/final-quiz")
+async def generate_final_quiz(request: FinalQuizRequest):
+    """
+    Generate a 5-question multiple choice final assessment for a topic.
+    """
+    print(f"[final-quiz] received classId={request.classId} topicName={request.topicName}")
+    try:
+        from utils.vector_store import load_chroma
+        from langchain_groq import ChatGroq
+        import os
+        import json
+        import re
+        import uuid
+
+        collection_name = f"class_{request.classId}"
+        print(f"[final-quiz] loading collection: {collection_name}")
+        try:
+            vectorstore = load_chroma(collection_name=collection_name)
+        except Exception as ce:
+            print(f"[final-quiz] ChromaDB load failed: {ce}")
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "course_not_vectorized", "message": "Your teacher hasn't prepared the study material yet."}
+            )
+
+        # Query vectorstore to retrieve up to 12 chunks for the topic
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 12})
+        source_docs = retriever.invoke(request.topicName)
+        
+        if not source_docs:
+            raise HTTPException(status_code=400, detail="No relevant study materials found for this topic.")
+            
+        context = "\n\n".join([doc.page_content for doc in source_docs])[:10000]
+
+        llm = ChatGroq(
+            model="llama-3.1-8b-instant",
+            api_key=os.getenv("GROQ_API_KEY"),
+            temperature=0.3
+        )
+
+        prompt = f"""You are a quiz generator for the topic: {request.topicName}.
+Based ONLY on the following course material, generate exactly 5 multiple choice questions.
+These questions must test conceptual understanding, not just memorization.
+Each question must have 4 options (A, B, C, D) with exactly one correct answer.
+For each question also write a 2-sentence explanation of WHY the correct answer is right,
+using the source material as reference. Additionally, provide a concise explanation of WHY each of the 3 incorrect options is wrong.
+
+Course material:
+{context}
+
+Return ONLY valid JSON, no extra text:
+{{
+  "quizId": "{str(uuid.uuid4())}",
+  "topic": "{request.topicName}",
+  "questions": [
+    {{
+      "id": 1,
+      "question": "Question text?",
+      "options": [
+        {{"letter": "A", "text": "Option text"}},
+        {{"letter": "B", "text": "Option text"}},
+        {{"letter": "C", "text": "Option text"}},
+        {{"letter": "D", "text": "Option text"}}
+      ],
+      "correctLetter": "A",
+      "explanation": "The correct answer is A because... According to the material...",
+      "wrongAnswerReasons": {{
+        "B": "B is incorrect because...",
+        "C": "C is incorrect because...",
+        "D": "D is incorrect because..."
+      }}
+    }}
+  ]
+}}"""
+
+        response = llm.invoke(prompt)
+        text = response.content.strip()
+
+        raw = text.strip()
+        if raw.startswith("```"):
+            import re
+            raw = re.sub(r'^```(?:json)?\n?', '', raw)
+            raw = re.sub(r'\n?```$', '', raw)
+            
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
+            else:
+                raise Exception("Failed to parse LLM response")
+
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[final-quiz] FAILED: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "internal_error", "message": str(e)}
+        )
 
 @router.get("/health")
 async def agent_health():

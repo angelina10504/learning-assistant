@@ -51,6 +51,7 @@ const User = require('../models/User')
 const Document = require('../models/Document')
 const StudySession = require('../models/StudySession')
 const StudyPlan = require('../models/StudyPlan')
+const QuizResult = require('../models/QuizResult')
 
 // Helper: Generate random 6-char alphanumeric class code
 const generateClassCode = () => {
@@ -603,8 +604,13 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
         })).sort((a, b) => a.topic.localeCompare(b.topic))
 
         // Merge session stats + plan progress into final student list
-        // Also include students who have plans but no sessions
+        // Seed from ALL enrolled students so no one is missing
+        const classDocs = await Class.find({ _id: { $in: classIds } }).populate('students', 'name email')
+        const enrolledStudents = classDocs.flatMap(c => c.students || [])
+        const enrolledMap = new Map(enrolledStudents.map(u => [u._id.toString(), u]))
+
         const allStudentIds = new Set([
+            ...enrolledMap.keys(),
             ...Array.from(studentStatsMap.keys()),
             ...Array.from(studentPlanProgressMap.keys())
         ])
@@ -612,6 +618,7 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
         const students = Array.from(allStudentIds).map(sid => {
             const s = studentStatsMap.get(sid)
             const planData = studentPlanProgressMap.get(sid)
+            const enrolledUser = enrolledMap.get(sid)
 
             // --- Compute progress ---
             let progress = 0
@@ -637,12 +644,15 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
 
             progress = Math.round(progress)
 
-            // If student was found in sessions, use their data; else use minimal info from plan
+            // Build name/email from session data OR enrolled user lookup
+            const name = s?.name || enrolledUser?.name || 'Student'
+            const email = s?.email || enrolledUser?.email || ''
+
             if (s) {
                 return {
                     id: s.id,
-                    name: s.name,
-                    email: s.email,
+                    name,
+                    email,
                     topicsCompleted: planData?.completed || 0,
                     timeStudied: s.timeStudied > 60 ? parseFloat((s.timeStudied / 60).toFixed(1)) : 0,
                     progress,
@@ -653,11 +663,11 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
                 }
             }
 
-            // Student only has plans, no sessions yet
+            // Student has plan or just enrolled — no sessions yet
             return {
                 id: sid,
-                name: 'Student',
-                email: '',
+                name,
+                email,
                 topicsCompleted: planData?.completed || 0,
                 timeStudied: 0,
                 progress,
@@ -963,6 +973,7 @@ router.get('/:id/mastery-heatmap', protect, authorize('teacher'), async (req, re
         // 1. Find all StudyPlans for this classId
         const studyPlans = await StudyPlan.find({ classId })
         const sessions = await StudySession.find({ classId })
+        const quizResults = await QuizResult.find({ classId })
 
         // 2. Collect all unique topic names across all plans
         const topicsSet = new Set()
@@ -976,31 +987,51 @@ router.get('/:id/mastery-heatmap', protect, authorize('teacher'), async (req, re
             const studentId = student._id.toString()
             const studentPlan = studyPlans.find(p => p.studentId.toString() === studentId)
             const studentSessions = sessions.filter(s => s.studentId.toString() === studentId)
+            const studentResults = quizResults.filter(r => r.studentId.toString() === studentId)
 
             const mastery = {}
 
             allTopics.forEach(topicName => {
-                let status = 'not_started'
+                let tier = 'not_started'
 
-                // Check StudySessions for weak flags (overrides plan status)
-                const isWeak = studentSessions.some(s => 
-                    s.weakTopics.some(wt => wt.topic === topicName)
-                )
+                // 1. In-session performance (25 pts)
+                const topicSessions = studentSessions.filter(s => s.topicName === topicName)
+                const inSessionCorrect = topicSessions.reduce((sum, s) => sum + (s.correctAnswers || 0), 0)
+                const inSessionTotal = topicSessions.reduce((sum, s) => sum + (s.questionsAsked || 0), 0)
+                const c1 = inSessionTotal > 0 ? (inSessionCorrect / inSessionTotal) * 25 : 0
 
-                if (isWeak) {
-                    status = 'weak'
-                } else if (studentPlan) {
-                    const topicInPlan = studentPlan.topics.find(t => t.name === topicName)
-                    if (topicInPlan) {
-                        if (topicInPlan.status === 'completed') {
-                            status = 'strong'
-                        } else if (topicInPlan.status === 'current') {
-                            status = 'fair'
-                        }
-                    }
+                // 2. Final quiz performance (40 pts)
+                // Get most recent result for this topic
+                const topicResults = studentResults.filter(r => r.topicName === topicName).sort((a,b) => b.completedAt - a.completedAt)
+                const latestResult = topicResults.length > 0 ? topicResults[0] : null
+                const c2 = latestResult ? (latestResult.score / 100) * 40 : 0
+
+                // 3. Session engagement (20 pts)
+                const totalExchanges = topicSessions.reduce((sum, s) => sum + (s.messages?.length || 0), 0)
+                const totalMinutes = topicSessions.reduce((sum, s) => sum + Math.round((s.duration || 0) / 60), 0)
+                const exchangeScore = Math.min(totalExchanges / 10, 1) * 12
+                const timeScore = Math.min(totalMinutes / 20, 1) * 8
+                const c3 = exchangeScore + timeScore
+
+                // 4. Completion & recovery (15 pts)
+                let c4 = 0
+                if (studentPlan) {
+                    const planTopic = studentPlan.topics.find(t => t.name === topicName)
+                    const completionBonus = planTopic?.status === 'completed' ? 10 : 
+                                            planTopic?.status === 'in_progress' ? 4 : 0
+                    const retryBonus = Math.min((latestResult?.attemptNumber || 0) > 1 ? 5 : 0, 5)
+                    c4 = completionBonus + retryBonus
                 }
 
-                mastery[topicName] = status
+                const totalScore = Math.round(c1 + c2 + c3 + c4)
+
+                // Assign tier based on explicitly requested thresholds
+                if (totalScore >= 80)      tier = 'mastered'
+                else if (totalScore >= 60) tier = 'proficient'
+                else if (totalScore >= 40) tier = 'developing'
+                else if (totalScore > 0 || topicSessions.length > 0) tier = 'emerging'
+
+                mastery[topicName] = tier
             })
 
             return {

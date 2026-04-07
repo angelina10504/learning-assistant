@@ -660,15 +660,19 @@ const ClassDetail = () => {
                 <div className="flex flex-wrap gap-4 text-xs">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-emerald-900/60 border border-emerald-500" />
-                    <span className="text-emerald-400">Strong</span>
+                    <span className="text-emerald-400">Mastered</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-cyan-900/60 border border-cyan-500" />
+                    <span className="text-cyan-400">Proficient</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-yellow-900/60 border border-yellow-500" />
-                    <span className="text-yellow-400">Fair</span>
+                    <span className="text-yellow-400">Developing</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-red-900/60 border border-red-500" />
-                    <span className="text-red-400">Weak</span>
+                    <span className="text-red-400">Emerging</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded bg-slate-800/40 border border-slate-700" />
@@ -720,17 +724,21 @@ const ClassDetail = () => {
                             let text = "";
                             
                             switch(mastery) {
-                              case 'strong':
+                              case 'mastered':
                                 cellClass = "bg-emerald-900/40 border-emerald-500/50 text-emerald-400";
-                                text = "Strong";
+                                text = "Mastered";
                                 break;
-                              case 'fair':
+                              case 'proficient':
+                                cellClass = "bg-cyan-900/40 border-cyan-500/50 text-cyan-400";
+                                text = "Proficient";
+                                break;
+                              case 'developing':
                                 cellClass = "bg-yellow-900/40 border-yellow-500/50 text-yellow-400";
-                                text = "Fair";
+                                text = "Developing";
                                 break;
-                              case 'weak':
+                              case 'emerging':
                                 cellClass = "bg-red-900/40 border-red-500/50 text-red-400";
-                                text = "Weak";
+                                text = "Emerging";
                                 break;
                               default:
                                 cellClass = "bg-slate-800/40 text-slate-500 border-transparent";
@@ -755,28 +763,31 @@ const ClassDetail = () => {
                         </td>
                         {heatmapData.topics.map(topic => {
                           const studentsOnTopic = heatmapData.students.map(s => s.mastery[topic]);
-                          const strongCount = studentsOnTopic.filter(m => m === 'strong').length;
-                          const fairCount = studentsOnTopic.filter(m => m === 'fair').length;
-                          const weakCount = studentsOnTopic.filter(m => m === 'weak').length;
+                          const strongCount = studentsOnTopic.filter(m => m === 'mastered').length;
+                          const proficientCount = studentsOnTopic.filter(m => m === 'proficient').length;
+                          const developingCount = studentsOnTopic.filter(m => m === 'developing').length;
+                          const weakCount = studentsOnTopic.filter(m => m === 'emerging').length;
                           const total = heatmapData.students.length;
                           
                           // Majority logic
                           let majorityColor = "text-slate-500";
                           if (total > 0) {
-                            if (strongCount > fairCount && strongCount > weakCount) majorityColor = "text-emerald-400";
-                            else if (weakCount > strongCount && weakCount > fairCount) majorityColor = "text-red-400";
-                            else if (fairCount > 0) majorityColor = "text-yellow-400";
+                            if (strongCount > proficientCount && strongCount > developingCount && strongCount > weakCount) majorityColor = "text-emerald-400";
+                            else if (proficientCount > strongCount && proficientCount > developingCount && proficientCount > weakCount) majorityColor = "text-cyan-400";
+                            else if (developingCount > strongCount && developingCount > proficientCount && developingCount > weakCount) majorityColor = "text-yellow-400";
+                            else if (weakCount > strongCount && weakCount > proficientCount && weakCount > developingCount) majorityColor = "text-red-400";
                           }
 
                           return (
                             <td key={`summary-${topic}`} className="p-4 border-slate-700/50">
                               <div className="flex flex-col gap-1">
                                 <div className={`font-bold text-center ${majorityColor}`}>
-                                  {total > 0 ? `${Math.round((Math.max(strongCount, fairCount, weakCount) / total) * 100)}%` : '0%'}
+                                  {total > 0 ? `${Math.round((Math.max(strongCount, proficientCount, developingCount, weakCount) / total) * 100)}%` : '0%'}
                                 </div>
                                 <div className="flex h-1.5 w-full rounded-full overflow-hidden bg-slate-800">
                                   <div className="bg-emerald-500" style={{ width: `${(strongCount/total)*100}%` }} />
-                                  <div className="bg-yellow-500" style={{ width: `${(fairCount/total)*100}%` }} />
+                                  <div className="bg-cyan-500" style={{ width: `${(proficientCount/total)*100}%` }} />
+                                  <div className="bg-yellow-500" style={{ width: `${(developingCount/total)*100}%` }} />
                                   <div className="bg-red-500" style={{ width: `${(weakCount/total)*100}%` }} />
                                 </div>
                               </div>
