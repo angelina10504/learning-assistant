@@ -119,11 +119,7 @@ const TeacherDashboard = () => {
       : 0;
   const weakTopics = analytics?.weakTopics || [];
 
-  // Prepare data for completion rate chart
-  const chartData = classes.map(cls => ({
-    name: cls.name.substring(0, 12),
-    completion: cls.avgCompletion || 0,
-  }));
+  // Class data contains studentProgresses from backend
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -411,25 +407,36 @@ const TeacherDashboard = () => {
           </div>
         </div>
 
-        {/* Completion Rate Chart */}
+        {/* Completion Rate Charts Per Class */}
         {classes.length > 0 && (
-          <motion.div
-            className="card p-6 mb-8"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-          >
-            <h2 className="text-xl font-bold text-slate-50 mb-6">Class Completion Rates</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                <XAxis dataKey="name" stroke="#94a3b8" style={{ fontSize: '12px' }} />
-                <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="completion" fill="#6366f1" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </motion.div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            {classes.filter(c => c.studentProgresses?.length > 0).length === 0 ? (
+                <div className="md:col-span-2 card p-6 text-center">
+                    <p className="text-slate-400 text-sm">No student progress data available yet.</p>
+                </div>
+            ) : (
+                classes.filter(c => c.studentProgresses?.length > 0).map((cls, idx) => (
+                    <motion.div
+                        key={cls.id || idx}
+                        className="card p-6 flex flex-col"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, delay: 0.3 + (idx * 0.1) }}
+                    >
+                        <h2 className="text-xl font-bold text-slate-50 mb-6">{cls.name} Completion Rates</h2>
+                        <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={cls.studentProgresses}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
+                                <XAxis dataKey="name" stroke="#94a3b8" style={{ fontSize: '12px' }} />
+                                <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} domain={[0, 100]} />
+                                <Tooltip content={<CustomTooltip />} />
+                                <Bar dataKey="progress" fill="#6366f1" radius={[8, 8, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </motion.div>
+                ))
+            )}
+          </div>
         )}
 
         {/* Export Banner */}

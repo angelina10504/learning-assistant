@@ -103,10 +103,11 @@ router.get('/teaching', protect, authorize('teacher'), async (req, res) => {
         const refinedClasses = await Promise.all(classes.map(async (cls) => {
             const studentCount = cls.students?.length || 0
             let avgCompletion = 0
+            let studentProgressList = []
 
             if (studentCount > 0) {
                 // Compute per-student progress, then average across ALL students
-                const studentProgressList = await Promise.all(
+                studentProgressList = await Promise.all(
                     cls.students.map(async (student) => {
                         const studentId = student._id || student
 
@@ -144,27 +145,34 @@ router.get('/teaching', protect, authorize('teacher'), async (req, res) => {
                         }
 
                         // Combine signals
+                        let finalProgress = 0
                         if (planProgress > 0 && sessionProgress > 0) {
-                            return (planProgress * 0.7) + (sessionProgress * 0.3)
+                            finalProgress = (planProgress * 0.7) + (sessionProgress * 0.3)
                         } else if (planProgress > 0) {
-                            return planProgress
+                            finalProgress = planProgress
                         } else {
-                            return sessionProgress
+                            finalProgress = sessionProgress
+                        }
+                        
+                        return {
+                            studentId: student._id || student,
+                            name: student.name || 'Student',
+                            progress: Math.round(finalProgress)
                         }
                     })
                 )
 
                 // Average all students (including those at 0, so teacher sees true class average)
-                const totalProgress = studentProgressList.reduce((sum, p) => sum + p, 0)
+                const totalProgress = studentProgressList.reduce((sum, p) => sum + p.progress, 0)
                 avgCompletion = Math.round(totalProgress / studentProgressList.length)
-                console.log(`[DEBUG] Class: ${cls.name} | studentProgressList: ${JSON.stringify(studentProgressList)} | avgCompletion: ${avgCompletion}`)
             }
 
             return {
                 ...cls.toObject(),
                 id: cls._id,
                 studentCount,
-                avgCompletion
+                avgCompletion,
+                studentProgresses: studentProgressList || []
             }
         }))
 
