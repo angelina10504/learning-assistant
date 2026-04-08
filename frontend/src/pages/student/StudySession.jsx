@@ -84,7 +84,9 @@ const StudySession = () => {
             setPlanTopics(planData.topics.map(t => ({
               name: t.name,
               status: t.status,
-              subtitle: `${t.estimatedMinutes} min · ${t.difficulty}`,
+              subtitle: `${t.estimatedMinutes} min`,
+              difficulty: t.difficulty,
+              priorKnowledge: t.priorKnowledge,
             })));
           } else {
             // Fetch plan separately
@@ -94,7 +96,9 @@ const StudySession = () => {
               setPlanTopics(plan.topics.map(t => ({
                 name: t.name,
                 status: t.status,
-                subtitle: `${t.estimatedMinutes} min · ${t.difficulty}`,
+                subtitle: `${t.estimatedMinutes} min`,
+                difficulty: t.difficulty,
+                priorKnowledge: t.priorKnowledge,
               })));
             } catch {
               setPlanTopics([]);
@@ -126,8 +130,12 @@ const StudySession = () => {
       setAutoMessageSent(true);
       const topicName = sessionData.topicName;
       const className = sessionData.className;
+      const topicInfo = planTopics.find(t => t.name === topicName);
+      const difficulty = topicInfo?.difficulty || 'intermediate';
+      const priorKnowledge = topicInfo?.priorKnowledge || 'partial';
+
       const autoMessage = topicName && topicName !== className
-        ? `I want to study the topic: ${topicName} from ${className}. Please help me learn this topic using my study materials.`
+        ? `I want to study the topic: ${topicName} from ${className}.\nTopic difficulty: ${difficulty}. My prior knowledge of this topic: ${priorKnowledge}.\nPlease help me learn this topic using my study materials.`
         : `I want to start studying ${className}. Please help me learn using my study materials.`;
 
       sendMessage(autoMessage);
@@ -638,6 +646,7 @@ const StudySession = () => {
           topicName={sessionData.topicName}
           classId={sessionData.classId}
           sessionId={sessionId}
+          difficulty={planTopics.find(t => t.name === sessionData.topicName)?.difficulty || 'intermediate'}
           onComplete={(passed) => {
              setShowQuizModal(false);
              performEndSession();

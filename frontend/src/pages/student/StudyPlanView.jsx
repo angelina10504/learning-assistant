@@ -96,16 +96,38 @@ const StudyPlanView = () => {
   const completedCount = plan?.topics.filter(t => t.status === 'completed').length || 0;
   const currentTopic = plan?.topics.find(t => t.status === 'in_progress' || t.status === 'needs_review');
 
-  const getDifficultyColor = (d) => {
-    if (d === 'beginner') return 'green';
-    if (d === 'advanced') return 'red';
-    return 'amber';
+  const getDifficultyStyle = (d) => {
+    if (d === 'basic' || d === 'beginner') return 'bg-slate-600 text-slate-200';
+    if (d === 'advanced') return 'bg-red-900 text-red-300';
+    return 'bg-amber-900 text-amber-300'; // intermediate
   };
+
+  const getDifficultyLabel = (d) => {
+    if (d === 'basic' || d === 'beginner') return 'Basic';
+    if (d === 'advanced') return 'Advanced';
+    return 'Intermediate';
+  };
+
+  const getPriorKnowledgeStyle = (pk) => {
+    if (pk === 'none') return 'bg-red-950 text-red-400';
+    if (pk === 'strong') return 'bg-emerald-950 text-emerald-400';
+    return 'bg-yellow-950 text-yellow-400'; // partial
+  };
+
+  const getPriorKnowledgeLabel = (pk) => {
+    if (pk === 'none') return 'No Prior Knowledge';
+    if (pk === 'strong') return 'Strong Knowledge';
+    return 'Some Knowledge'; // partial
+  };
+
+  const difficultyOrder = { basic: 0, beginner: 0, intermediate: 1, advanced: 2 };
+  const priorKnowledgeOrder = { none: 0, partial: 1, strong: 2 };
 
   const sortedTopics = plan
     ? [...plan.topics].sort((a, b) => {
-        const priorityOrder = { high: 0, medium: 1, low: 2 };
-        return priorityOrder[a.priority] - priorityOrder[b.priority];
+        const dDiff = (difficultyOrder[a.difficulty] ?? 1) - (difficultyOrder[b.difficulty] ?? 1);
+        if (dDiff !== 0) return dDiff;
+        return (priorKnowledgeOrder[a.priorKnowledge] ?? 1) - (priorKnowledgeOrder[b.priorKnowledge] ?? 1);
       })
     : [];
 
@@ -300,9 +322,14 @@ const StudyPlanView = () => {
                           </h3>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap mt-2">
-                          <Badge color={getDifficultyColor(topic.difficulty)} className="text-xs capitalize">
-                            {topic.difficulty}
-                          </Badge>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getDifficultyStyle(topic.difficulty)}`}>
+                            {getDifficultyLabel(topic.difficulty)}
+                          </span>
+                          {topic.priorKnowledge && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getPriorKnowledgeStyle(topic.priorKnowledge)}`}>
+                              {getPriorKnowledgeLabel(topic.priorKnowledge)}
+                            </span>
+                          )}
                           <span className="text-xs text-slate-400 flex items-center gap-1">
                             <Clock size={12} />
                             {topic.estimatedMinutes} min

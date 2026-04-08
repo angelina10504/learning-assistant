@@ -136,7 +136,7 @@ router.get('/dashboard', protect, authorize('student'), async (req, res) => {
 router.post('/final-quiz', protect, authorize('student'), async (req, res) => {
     console.log('[final-quiz] received:', req.body)
     try {
-        const { classId, topicName, retryAttempt } = req.body
+        const { classId, topicName, retryAttempt, difficulty } = req.body
 
         if (!classId || !topicName) {
             return res.status(400).json({ message: 'Class ID and topic name are required' })
@@ -156,7 +156,8 @@ router.post('/final-quiz', protect, authorize('student'), async (req, res) => {
         const response = await axios.post(`${genaiUrl}/agent/final-quiz`, {
             classId,
             topicName,
-            studentId: req.user._id.toString()
+            studentId: req.user._id.toString(),
+            difficulty: difficulty || 'intermediate'
         })
 
         const quizData = response.data

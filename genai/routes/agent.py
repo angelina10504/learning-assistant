@@ -576,13 +576,14 @@ class FinalQuizRequest(BaseModel):
     classId: str
     topicName: str
     studentId: str
+    difficulty: Optional[str] = "intermediate"
 
 @router.post("/final-quiz")
 async def generate_final_quiz(request: FinalQuizRequest):
     """
     Generate a 5-question multiple choice final assessment for a topic.
     """
-    print(f"[final-quiz] received classId={request.classId} topicName={request.topicName}")
+    print(f"[final-quiz] received classId={request.classId} topicName={request.topicName} difficulty={request.difficulty}")
     try:
         from utils.vector_store import load_chroma
         from langchain_groq import ChatGroq
@@ -617,12 +618,35 @@ async def generate_final_quiz(request: FinalQuizRequest):
             temperature=0.3
         )
 
+        
+        if request.difficulty == 'basic':
+            difficulty_instructions = """Generate questions that test recall and basic understanding.
+Questions should ask: definitions, identification, simple facts.
+Example style: "What is the purpose of X?" "Which of these is an example of X?"
+All 5 questions should be answerable by someone who just read about the topic."""
+        elif request.difficulty == 'advanced':
+            difficulty_instructions = """Generate questions that test analysis and evaluation.
+Questions should ask: trade-offs, design decisions, failure scenarios.
+Example style: "In what scenario would X be preferred over Y and why?"
+"What is the limitation of X in a distributed system?"
+Questions should be challenging even for someone who studied the topic well.
+Avoid questions that can be answered from a single sentence of the material."""
+        else:
+            difficulty_instructions = """Generate questions that test comprehension and application.
+Questions should ask: comparisons, cause-effect, how things work together.
+Example style: "How does X differ from Y?" "What happens when X fails?"
+At least 2 questions should require applying knowledge, not just recalling it."""
+
+
         prompt = f"""You are a quiz generator for the topic: {request.topicName}.
 Based ONLY on the following course material, generate exactly 5 multiple choice questions.
 These questions must test conceptual understanding, not just memorization.
 Each question must have 4 options (A, B, C, D) with exactly one correct answer.
 For each question also write a 2-sentence explanation of WHY the correct answer is right,
 using the source material as reference. Additionally, provide a concise explanation of WHY each of the 3 incorrect options is wrong.
+
+DIFFICULTY GUIDELINES:
+{difficulty_instructions}
 
 Course material:
 {context}

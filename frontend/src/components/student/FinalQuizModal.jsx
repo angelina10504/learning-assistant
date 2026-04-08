@@ -4,7 +4,7 @@ import { CheckCircle2, XCircle, AlertTriangle, ArrowRight, Loader2, ArrowLeft, C
 import sessionService from '../../services/sessionService';
 import toast from 'react-hot-toast';
 
-const FinalQuizModal = ({ isOpen, onClose, topicName, classId, sessionId, onComplete }) => {
+const FinalQuizModal = ({ isOpen, onClose, topicName, classId, sessionId, difficulty, onComplete }) => {
   const [stage, setStage] = useState('intro'); // intro, questions, results
   const [loading, setLoading] = useState(false);
   const [quiz, setQuiz] = useState(null);
@@ -29,7 +29,7 @@ const FinalQuizModal = ({ isOpen, onClose, topicName, classId, sessionId, onComp
     console.log('[FinalQuiz] Fetching final quiz with:', { classId, topicName, sessionId, isRetry });
     try {
       setLoading(true);
-      const res = await sessionService.getFinalQuiz(classId, topicName, isRetry);
+      const res = await sessionService.getFinalQuiz(classId, topicName, isRetry, difficulty);
       console.log('[FinalQuiz] Response:', res.status, res.data);
       if (res.data && res.data.questions) {
         setQuiz(res.data);

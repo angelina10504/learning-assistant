@@ -69,8 +69,8 @@ const sessionService = {
     return api.delete(`/sessions/plans/${planId}`);
   },
   // POST /api/sessions/final-quiz
-  getFinalQuiz: (classId, topicName, retryAttempt = false) => {
-    return api.post('/sessions/final-quiz', { classId, topicName, retryAttempt });
+  getFinalQuiz: (classId, topicName, retryAttempt = false, difficulty = "intermediate") => {
+    return api.post('/sessions/final-quiz', { classId, topicName, retryAttempt, difficulty });
   },
 
   // POST /api/sessions/final-quiz/submit
