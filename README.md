@@ -1,4 +1,4 @@
-# 🎓 Personalized Learning Assistant
+# 🎓 AGENTIC STUDY PLANNER
 
 An intelligent, agent-driven learning ecosystem built with the **MERN stack**, **FastAPI**, and **LangChain**. This project transforms static course materials into interactive, adaptive learning journeys using state-of-the-art **Retrieval-Augmented Generation (RAG)**.
 
