@@ -11,6 +11,7 @@ import StudentClassDetail from './pages/student/ClassDetail';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StudySession from './pages/student/StudySession';
 import StudyPlanView from './pages/student/StudyPlanView';
+import LandingPage from './pages/LandingPage';
 
 const pageVariants = {
   initial: { opacity: 0, y: 20 },
@@ -30,12 +31,12 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-[#050816] flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="inline-block w-12 h-12 border-4 border-indigo-400 border-t-white rounded-full animate-spin" />
           <div className="space-y-2">
-            <div className="h-4 w-32 bg-slate-700/50 rounded animate-pulse mx-auto" />
-            <div className="h-3 w-24 bg-slate-700/30 rounded animate-pulse mx-auto" />
+            <div className="h-4 w-32 bg-white/[0.06] rounded animate-pulse mx-auto" />
+            <div className="h-3 w-24 bg-white/[0.04] rounded animate-pulse mx-auto" />
           </div>
         </div>
       </div>
@@ -59,12 +60,12 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-[#050816] flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="inline-block w-12 h-12 border-4 border-indigo-400 border-t-white rounded-full animate-spin" />
           <div className="space-y-2">
-            <div className="h-4 w-32 bg-slate-700/50 rounded animate-pulse mx-auto" />
-            <div className="h-3 w-24 bg-slate-700/30 rounded animate-pulse mx-auto" />
+            <div className="h-4 w-32 bg-white/[0.06] rounded animate-pulse mx-auto" />
+            <div className="h-3 w-24 bg-white/[0.04] rounded animate-pulse mx-auto" />
           </div>
         </div>
       </div>
@@ -77,13 +78,14 @@ function App() {
         position="top-right"
         toastOptions={{
           style: {
-            background: '#1e293b',
+            background: 'rgba(15,23,42,0.95)',
             color: '#f1f5f9',
-            border: '1px solid #334155',
+            border: '1px solid rgba(255,255,255,0.08)',
             borderRadius: '12px',
+            backdropFilter: 'blur(12px)',
           },
-          success: { iconTheme: { primary: '#10b981', secondary: '#1e293b' } },
-          error: { iconTheme: { primary: '#ef4444', secondary: '#1e293b' } },
+          success: { iconTheme: { primary: '#10b981', secondary: 'rgba(15,23,42,0.95)' } },
+          error: { iconTheme: { primary: '#ef4444', secondary: 'rgba(15,23,42,0.95)' } },
         }}
       />
       <AnimatePresence mode="wait">
@@ -92,7 +94,7 @@ function App() {
           <Route path="/login" element={<PageWrap><LoginPage /></PageWrap>} />
           <Route path="/register" element={<PageWrap><RegisterPage /></PageWrap>} />
 
-          {/* Home redirect */}
+          {/* Home — Landing for guests, dashboard redirect for logged-in users */}
           <Route
             path="/"
             element={
@@ -102,7 +104,7 @@ function App() {
                   replace
                 />
               ) : (
-                <Navigate to="/login" replace />
+                <PageWrap><LandingPage /></PageWrap>
               )
             }
           />

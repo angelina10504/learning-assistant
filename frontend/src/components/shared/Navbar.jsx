@@ -33,11 +33,16 @@ const Navbar = () => {
       initial={{ y: -80 }}
       animate={{ y: 0 }}
       transition={{ duration: 0.4 }}
-      className="sticky top-0 z-40 bg-slate-800 border-b border-slate-700 shadow-sm"
+      className="sticky top-0 z-40 border-b border-white/[0.06]"
+      style={{
+        background: 'rgba(5,8,22,0.8)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+      }}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Left side - Logo and branding */}
+          {/* Left side - Logo */}
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
             <Brain size={28} className="text-indigo-400" />
             <div>
@@ -50,9 +55,16 @@ const Navbar = () => {
           <div className="hidden md:flex items-center gap-4">
             {user && (
               <>
-                <div className="flex items-center gap-2 px-3 py-1 bg-slate-700 rounded-lg">
+                {/* User info pill */}
+                <div
+                  className="flex items-center gap-2 px-3 py-1 rounded-xl border border-white/[0.08]"
+                  style={{ background: 'rgba(255,255,255,0.05)' }}
+                >
                   <span className="text-sm text-slate-300">{user.name}</span>
-                  <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-slate-600 text-slate-200">
+                  <span
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-white/[0.06]"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: '#cbd5e1' }}
+                  >
                     {user.role === 'teacher' ? <GraduationCap size={14} /> : <BookOpen size={14} />}
                     {user.role}
                   </span>
@@ -80,7 +92,7 @@ const Navbar = () => {
           <div className="md:hidden">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-lg hover:bg-slate-700 transition-colors"
+              className="p-2 rounded-lg hover:bg-white/[0.06] transition-colors"
             >
               {mobileMenuOpen ? (
                 <X size={24} className="text-slate-50" />
@@ -93,9 +105,12 @@ const Navbar = () => {
 
         {/* Mobile menu */}
         {mobileMenuOpen && user && (
-          <div className="md:hidden pb-4 pt-2 border-t border-slate-700">
+          <div className="md:hidden pb-4 pt-2 border-t border-white/[0.06]">
             <div className="flex flex-col gap-3">
-              <div className="px-3 py-2 bg-slate-700 rounded-lg">
+              <div
+                className="px-3 py-2 rounded-xl border border-white/[0.06]"
+                style={{ background: 'rgba(255,255,255,0.05)' }}
+              >
                 <p className="text-sm font-medium text-slate-50">{user.name}</p>
                 <p className="flex items-center gap-1 text-xs text-slate-400 mt-1">
                   {user.role === 'teacher' ? <GraduationCap size={14} /> : <BookOpen size={14} />}

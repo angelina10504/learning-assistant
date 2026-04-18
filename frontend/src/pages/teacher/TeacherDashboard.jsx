@@ -133,7 +133,10 @@ const TeacherDashboard = () => {
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 shadow-lg">
+        <div
+          className="border border-white/[0.08] rounded-xl p-3 shadow-lg"
+          style={{ background: 'rgba(15,23,42,0.95)', backdropFilter: 'blur(12px)' }}
+        >
           <p className="text-slate-300 text-sm font-medium">{payload[0].payload.name}</p>
           <p className="text-indigo-400 text-sm font-bold">{payload[0].value}%</p>
         </div>
@@ -175,10 +178,16 @@ const TeacherDashboard = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="min-h-screen bg-[#050816]">
+      {/* Ambient background glows */}
+      <div className="fixed inset-0 pointer-events-none z-0" aria-hidden>
+        <div className="absolute top-0 right-[20%] w-[500px] h-[500px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+        <div className="absolute bottom-[20%] left-[10%] w-[400px] h-[400px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.06) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+      </div>
+      <div className="relative z-10">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Top Section */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
@@ -211,6 +220,9 @@ const TeacherDashboard = () => {
           >
             {statItems.map((stat, index) => {
               const IconComponent = stat.icon;
+              const iconColors = ['rgba(99,102,241', 'rgba(34,211,238', 'rgba(167,139,250', 'rgba(251,191,36'];
+              const iconC = iconColors[index] || iconColors[0];
+              const iconTextColors = ['text-indigo-400', 'text-cyan-400', 'text-violet-400', 'text-amber-400'];
               return (
                 <motion.div
                   key={index}
@@ -219,13 +231,18 @@ const TeacherDashboard = () => {
                   onClick={stat.action}
                   className={stat.action ? 'cursor-pointer' : ''}
                 >
-                  <div className={`card p-6 bg-gradient-to-br ${stat.color} hover:shadow-lg transition-shadow`}>
+                  <div className="card p-6 hover:border-white/[0.12] transition-all duration-300">
                     <div className="flex items-start justify-between">
                       <div>
-                        <p className="text-slate-400 text-sm font-medium mb-1">{stat.label}</p>
+                        <p className="text-white/50 text-sm font-medium mb-1">{stat.label}</p>
                         <p className="text-3xl sm:text-4xl font-bold text-slate-50">{stat.value}</p>
                       </div>
-                      <IconComponent className="w-8 h-8 text-slate-400" />
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center"
+                        style={{ background: `${iconC},0.1)`, border: `1px solid ${iconC},0.2)` }}
+                      >
+                        <IconComponent className={`w-5 h-5 ${iconTextColors[index]}`} />
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -266,7 +283,7 @@ const TeacherDashboard = () => {
                       variants={itemVariants}
                       whileHover={{ y: -2 }}
                       onClick={() => navigate(`/teacher/class/${cls.id}`)}
-                      className="card p-6 hover:border-indigo-500/50 hover:shadow-lg transition-all cursor-pointer"
+                      className="card p-6 hover:border-white/[0.12] transition-all cursor-pointer"
                     >
                       <div className="flex justify-between items-start mb-4">
                         <div>
@@ -345,7 +362,7 @@ const TeacherDashboard = () => {
                     <motion.div
                       key={idx}
                       variants={itemVariants}
-                      className="card p-4 border-l-4 border-red-500 bg-slate-800/50"
+                      className="card p-4 border-l-4 border-red-500"
                     >
                       <div className="flex items-start justify-between mb-2">
                         <h4 className="font-semibold text-slate-50 text-sm">{topic.name}</h4>
@@ -436,11 +453,17 @@ const TeacherDashboard = () => {
                         <h2 className="text-xl font-bold text-slate-50 mb-6">{cls.name} Completion Rates</h2>
                         <ResponsiveContainer width="100%" height={300}>
                             <BarChart data={cls.studentProgresses}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                                <XAxis dataKey="name" stroke="#94a3b8" style={{ fontSize: '12px' }} />
-                                <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} domain={[0, 100]} />
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                                <XAxis dataKey="name" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
+                                <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} domain={[0, 100]} />
                                 <Tooltip content={<CustomTooltip />} />
-                                <Bar dataKey="progress" fill="#6366f1" radius={[8, 8, 0, 0]} />
+                                <defs>
+                                  <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#818cf8" />
+                                    <stop offset="100%" stopColor="#6366f1" />
+                                  </linearGradient>
+                                </defs>
+                                <Bar dataKey="progress" fill="url(#barGradient)" radius={[8, 8, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     </motion.div>
@@ -451,7 +474,8 @@ const TeacherDashboard = () => {
 
         {/* Export Banner */}
         <motion.div
-          className="card p-6 sm:p-8 bg-gradient-to-r from-indigo-500/10 to-cyan-500/10 border border-indigo-500/30"
+          className="card p-6 sm:p-8 border-indigo-500/20"
+          style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(34,211,238,0.05) 100%)' }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.4 }}
@@ -471,6 +495,7 @@ const TeacherDashboard = () => {
           </div>
         </motion.div>
       </main>
+      </div>
 
       {/* Create Class Modal */}
       <CreateClassModal

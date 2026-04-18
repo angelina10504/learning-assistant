@@ -329,15 +329,15 @@ const StudySession = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900">
+      <div className="min-h-screen bg-[#050816]">
         <Navbar />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="space-y-4">
             <div className="flex items-center gap-4 mb-6">
-              <div className="h-10 w-10 bg-slate-700/50 rounded-lg animate-pulse" />
+              <div className="h-10 w-10 bg-white/[0.06] rounded-lg animate-pulse" />
               <div className="space-y-2">
-                <div className="h-5 w-48 bg-slate-700/50 rounded animate-pulse" />
-                <div className="h-3 w-32 bg-slate-700/30 rounded animate-pulse" />
+                <div className="h-5 w-48 bg-white/[0.06] rounded animate-pulse" />
+                <div className="h-3 w-32 bg-white/[0.04] rounded animate-pulse" />
               </div>
             </div>
             <ChatBubbleSkeleton align="left" />
@@ -351,7 +351,7 @@ const StudySession = () => {
 
   if (!sessionData) {
     return (
-      <div className="min-h-screen bg-slate-900">
+      <div className="min-h-screen bg-[#050816]">
         <Navbar />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col items-center justify-center min-h-[60vh]">
           <BookOpen className="w-12 h-12 text-slate-500 mb-4" />
@@ -413,7 +413,8 @@ const StudySession = () => {
       {/* Weak Spots */}
       {sessionData.weakTopics && sessionData.weakTopics.length > 0 && (
         <motion.div
-          className="card p-4 bg-amber-600/10 border-amber-600/30"
+          className="card p-4 border border-amber-600/20"
+          style={{ background: 'rgba(217,119,6,0.08)' }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
@@ -435,18 +436,18 @@ const StudySession = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col">
+    <div className="min-h-screen bg-[#050816] flex flex-col">
       <Navbar />
 
       {/* Header */}
-      <div className="bg-slate-800 border-b border-slate-700 sticky top-16 z-30">
+      <div className="border-b border-white/[0.06] sticky top-16 z-30" style={{ background: 'rgba(5,8,22,0.85)', backdropFilter: 'blur(16px)' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-3">
               {/* Mobile sidebar toggle */}
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 hover:bg-slate-700 rounded-lg transition-colors"
+                className="lg:hidden p-2 hover:bg-white/[0.06] rounded-lg transition-colors"
                 title="Open sidebar"
               >
                 <Menu className="w-5 h-5 text-slate-300" />
@@ -456,7 +457,7 @@ const StudySession = () => {
                   if (sessionData?.planId) navigate(`/student/plan/${sessionData.planId}`);
                   else navigate('/student/dashboard');
                 }}
-                className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+                className="p-2 hover:bg-white/[0.06] rounded-lg transition-colors"
                 title="Back"
               >
                 <ArrowLeft className="w-5 h-5" />
@@ -473,7 +474,7 @@ const StudySession = () => {
                   <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Progress</p>
                   <p className="text-sm font-bold text-slate-300">{progress}%</p>
                 </div>
-                <div className="w-24 sm:w-32 h-2.5 bg-slate-700 rounded-full overflow-hidden border border-slate-600/50">
+                <div className="w-24 sm:w-32 h-2.5 bg-white/[0.06] rounded-full overflow-hidden border border-white/[0.04]">
                   <motion.div
                     className={`h-full ${
                       progress < 30 ? 'bg-red-500' :
@@ -487,7 +488,7 @@ const StudySession = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 px-3 py-1 bg-slate-700 rounded-lg">
+              <div className="flex items-center gap-2 px-3 py-1 rounded-lg border border-white/[0.08]" style={{ background: 'rgba(255,255,255,0.05)' }}>
                 <Clock className="w-4 h-4 text-cyan-300" />
                 <span className="text-sm font-mono text-cyan-300">{formatTime(sessionTime)}</span>
               </div>
@@ -535,7 +536,7 @@ const StudySession = () => {
               onClick={() => setSidebarOpen(false)}
             />
             <motion.div
-              className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-slate-900 border-l border-slate-700 z-50 lg:hidden overflow-y-auto p-6"
+              className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-[#050816] border-l border-white/[0.08] z-50 lg:hidden overflow-y-auto p-6"
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
@@ -545,7 +546,7 @@ const StudySession = () => {
                 <h2 className="text-lg font-bold text-slate-50">Session Info</h2>
                 <button
                   onClick={() => setSidebarOpen(false)}
-                  className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+                  className="p-2 hover:bg-white/[0.06] rounded-lg transition-colors"
                 >
                   <X className="w-5 h-5 text-slate-400" />
                 </button>
@@ -607,7 +608,7 @@ const StudySession = () => {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                <div className="bg-slate-800 border border-slate-700/50 rounded-2xl rounded-tl-sm px-4 py-3 max-w-xs lg:max-w-md">
+                <div className="border border-white/[0.08] rounded-2xl rounded-tl-sm px-4 py-3 max-w-xs lg:max-w-md" style={{ background: 'rgba(15,23,42,0.8)' }}>
                   <div className="flex gap-2 items-center">
                     <div className="flex gap-1">
                       <span className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -636,7 +637,7 @@ const StudySession = () => {
                 <motion.button
                   key={key}
                   onClick={() => handleQuickAction(key)}
-                  className="px-3 py-1 rounded-full text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 transition-all duration-200 flex items-center gap-1 hover:scale-[1.02] active:scale-[0.98]"
+                  className="px-3 py-1 rounded-full text-xs bg-white/[0.06] hover:bg-white/[0.1] text-slate-200 transition-all duration-200 flex items-center gap-1 hover:scale-[1.02] active:scale-[0.98]"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >

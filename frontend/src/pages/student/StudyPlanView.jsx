@@ -162,21 +162,21 @@ const StudyPlanView = () => {
       case 'completed': return 'border-green-500 bg-green-500/10';
       case 'in_progress': return 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/10';
       case 'needs_review': return 'border-amber-500 bg-amber-500/10 shadow-lg shadow-amber-500/10';
-      default: return 'border-slate-700 bg-slate-800/50 opacity-60';
+      default: return 'border-slate-700 bg-white/[0.03] opacity-60';
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900">
+      <div className="min-h-screen bg-[#050816]">
         <Navbar />
         <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="space-y-4">
-            <div className="h-6 w-32 bg-slate-700/50 rounded animate-pulse mb-6" />
-            <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50 space-y-4">
-              <div className="h-8 w-48 bg-slate-700/50 rounded animate-pulse" />
-              <div className="h-4 w-64 bg-slate-700/30 rounded animate-pulse" />
-              <div className="h-3 w-full bg-slate-700/30 rounded animate-pulse" />
+            <div className="h-6 w-32 bg-white/[0.06] rounded animate-pulse mb-6" />
+            <div className="bg-white/[0.03] rounded-xl p-6 border border-white/[0.06] space-y-4">
+              <div className="h-8 w-48 bg-white/[0.06] rounded animate-pulse" />
+              <div className="h-4 w-64 bg-white/[0.04] rounded animate-pulse" />
+              <div className="h-3 w-full bg-white/[0.04] rounded animate-pulse" />
             </div>
             {[1, 2, 3, 4].map(i => <TopicCardSkeleton key={i} />)}
           </div>
@@ -187,7 +187,7 @@ const StudyPlanView = () => {
 
   if (!plan) {
     return (
-      <div className="min-h-screen bg-slate-900">
+      <div className="min-h-screen bg-[#050816]">
         <Navbar />
         <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center flex flex-col items-center justify-center min-h-[60vh]">
           <BookOpen className="w-12 h-12 text-slate-500 mb-4" />
@@ -202,10 +202,16 @@ const StudyPlanView = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="min-h-screen bg-[#050816]">
+      {/* Ambient glows */}
+      <div className="fixed inset-0 pointer-events-none z-0" aria-hidden>
+        <div className="absolute top-0 right-[20%] w-[500px] h-[500px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+        <div className="absolute bottom-[20%] left-[10%] w-[400px] h-[400px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.06) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+      </div>
+      <div className="relative z-10">
       <Navbar />
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="relative z-10 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -296,7 +302,7 @@ const StudyPlanView = () => {
         {/* Topic Roadmap */}
         <div className="relative">
           {/* Vertical timeline line */}
-          <div className="absolute left-7 top-0 bottom-0 w-0.5 bg-gradient-to-b from-cyan-500/50 via-slate-700 to-slate-800" />
+          <div className="absolute left-7 top-0 bottom-0 w-0.5 bg-gradient-to-b from-cyan-500/50 via-white/[0.08] to-transparent" />
 
           <motion.div
             className="space-y-4"
@@ -318,7 +324,7 @@ const StudyPlanView = () => {
                   className="relative pl-16"
                 >
                   {/* Timeline node */}
-                  <div className={`absolute left-4 top-4 w-7 h-7 rounded-full flex items-center justify-center z-10 bg-slate-900 ${
+                  <div className={`absolute left-4 top-4 w-7 h-7 rounded-full flex items-center justify-center z-10 bg-[#050816] ${
                     isCurrent ? 'ring-4 ring-cyan-500/30' : ''
                   }`}>
                     {getStatusIcon(topic.status, unlocked)}
@@ -418,16 +424,14 @@ const StudyPlanView = () => {
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
-                        className="mt-4 pt-4 border-t border-slate-700/50"
+                        className="mt-4 pt-4 border-t border-white/[0.06]"
                       >
                         {topic.subtopics && topic.subtopics.length > 0 && (
                           <div className="mb-3">
                             <p className="text-xs text-slate-400 mb-2 font-medium">Subtopics:</p>
                             <div className="flex flex-wrap gap-2">
                               {topic.subtopics.map((sub, sIdx) => (
-                                <span key={sIdx} className="text-xs px-2.5 py-1 bg-slate-700/50 text-slate-300 rounded-full">
-                                  {sub}
-                                </span>
+                                <span key={sIdx} className="text-xs px-2.5 py-1 bg-white/[0.06] text-slate-300 rounded-full">{sub}</span>
                               ))}
                             </div>
                           </div>
@@ -446,6 +450,7 @@ const StudyPlanView = () => {
           </motion.div>
         </div>
       </main>
+      </div>
     </div>
   );
 };

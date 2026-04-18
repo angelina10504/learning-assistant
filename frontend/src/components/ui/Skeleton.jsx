@@ -1,10 +1,10 @@
 function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse bg-slate-700/50 rounded-lg ${className}`} />;
+  return <div className={`animate-pulse bg-white/[0.06] rounded-lg ${className}`} />;
 }
 
 function CardSkeleton() {
   return (
-    <div className="bg-slate-800/50 rounded-xl p-6 space-y-3 border border-slate-700/50">
+    <div className="bg-white/[0.03] rounded-xl p-6 space-y-3 border border-white/[0.06]">
       <Skeleton className="h-5 w-1/3" />
       <Skeleton className="h-4 w-2/3" />
       <Skeleton className="h-4 w-1/2" />
@@ -14,7 +14,7 @@ function CardSkeleton() {
 
 function StatCardSkeleton() {
   return (
-    <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50 text-center space-y-3">
+    <div className="bg-white/[0.03] rounded-xl p-6 border border-white/[0.06] text-center space-y-3">
       <Skeleton className="h-8 w-8 rounded-full mx-auto" />
       <Skeleton className="h-8 w-16 mx-auto" />
       <Skeleton className="h-4 w-24 mx-auto" />
@@ -24,7 +24,7 @@ function StatCardSkeleton() {
 
 function TableRowSkeleton({ cols = 4 }) {
   return (
-    <div className="flex gap-4 p-4 border-b border-slate-700/30">
+    <div className="flex gap-4 p-4 border-b border-white/[0.04]">
       {Array.from({ length: cols }).map((_, i) => (
         <Skeleton key={i} className="h-4 flex-1" />
       ))}
@@ -45,7 +45,7 @@ function ChatBubbleSkeleton({ align = 'left' }) {
 
 function TopicCardSkeleton() {
   return (
-    <div className="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50 space-y-3 pl-16 relative">
+    <div className="bg-white/[0.03] rounded-xl p-5 border border-white/[0.06] space-y-3 pl-16 relative">
       <Skeleton className="absolute left-4 top-4 w-7 h-7 rounded-full" />
       <Skeleton className="h-5 w-2/5" />
       <div className="flex gap-2">

@@ -194,10 +194,16 @@ const StudentDashboard = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="min-h-screen bg-[#050816]">
+      {/* Ambient background glows */}
+      <div className="fixed inset-0 pointer-events-none z-0" aria-hidden>
+        <div className="absolute top-0 right-[20%] w-[500px] h-[500px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+        <div className="absolute bottom-[20%] left-[10%] w-[400px] h-[400px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.06) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+      </div>
+      <div className="relative z-10">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Page Title */}
         <div className="mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-50 mb-2">Dashboard</h1>
@@ -221,7 +227,7 @@ const StudentDashboard = () => {
               return (
                 <motion.div
                   key={index}
-                  className="card p-6 text-center hover:bg-slate-700/50 transition-colors"
+                  className="card p-6 text-center hover:border-white/[0.12] transition-all duration-300"
                   variants={itemVariants}
                 >
                   <div className="flex justify-center mb-3">
@@ -238,9 +244,10 @@ const StudentDashboard = () => {
         {/* Continue Learning Banner */}
         {sessions.length > 0 && (
           <motion.div
-            className="mb-8 card p-6 bg-gradient-to-r from-indigo-600/20 to-cyan-600/20 border-indigo-500/30 cursor-pointer hover:from-indigo-600/30 hover:to-cyan-600/30 transition-all duration-200"
+            className="mb-8 card p-6 cursor-pointer hover:border-indigo-400/40 transition-all duration-200"
             onClick={() => resumeSession(sessions[0].id)}
             whileHover={{ scale: 1.01 }}
+            style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.1) 0%, rgba(34,211,238,0.06) 100%)', border: '1px solid rgba(99,102,241,0.2)' }}
           >
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -306,7 +313,7 @@ const StudentDashboard = () => {
                   {classes.map((cls) => (
                     <motion.div
                       key={cls.id}
-                      className="card p-5 hover:bg-slate-700/50 transition-colors"
+                      className="card p-5 hover:border-white/[0.12] transition-all duration-300"
                       variants={itemVariants}
                     >
                       <div className="flex items-start justify-between mb-3">
@@ -382,7 +389,7 @@ const StudentDashboard = () => {
                   {weakAreas.map((area, idx) => (
                     <motion.div
                       key={idx}
-                      className="card p-4 border-l-4 border-l-amber-500 bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer"
+                      className="card p-4 border-l-4 border-l-amber-500 cursor-pointer hover:border-white/[0.12] transition-all duration-300"
                       variants={itemVariants}
                     >
                       <div className="flex items-center justify-between">
@@ -415,7 +422,8 @@ const StudentDashboard = () => {
             />
             {roadmap.filter(t => t.status === 'completed').length > 0 && (
               <motion.div
-                className="card p-4 mt-4 bg-green-600/10 border-green-600/30"
+                className="card p-4 mt-4 border border-green-500/20"
+              style={{ background: 'rgba(34,197,94,0.06)' }}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
@@ -430,6 +438,7 @@ const StudentDashboard = () => {
           </div>
         </div>
       </main>
+      </div>
 
       {/* Join Class Modal */}
       <JoinClassModal

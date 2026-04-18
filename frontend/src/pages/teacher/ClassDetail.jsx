@@ -245,7 +245,10 @@ const ClassDetail = () => {
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 shadow-lg">
+        <div
+          className="border border-white/[0.08] rounded-xl p-3 shadow-lg"
+          style={{ background: 'rgba(15,23,42,0.95)', backdropFilter: 'blur(12px)' }}
+        >
           <p className="text-slate-300 text-sm font-medium">{payload[0].payload.topic}</p>
           <p className="text-indigo-400 text-sm font-bold">{payload[0].value}%</p>
         </div>
@@ -256,15 +259,15 @@ const ClassDetail = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900">
+      <div className="min-h-screen bg-[#050816]">
         <Navbar />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="space-y-6">
             <div className="flex items-center gap-4">
-              <div className="h-10 w-10 bg-slate-700/50 rounded-lg animate-pulse" />
+              <div className="h-10 w-10 bg-white/[0.06] rounded-lg animate-pulse" />
               <div className="space-y-2">
-                <div className="h-7 w-48 bg-slate-700/50 rounded animate-pulse" />
-                <div className="h-5 w-24 bg-slate-700/30 rounded animate-pulse" />
+                <div className="h-7 w-48 bg-white/[0.06] rounded animate-pulse" />
+                <div className="h-5 w-24 bg-white/[0.04] rounded animate-pulse" />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -280,16 +283,22 @@ const ClassDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="min-h-screen bg-[#050816]">
+      {/* Ambient glows */}
+      <div className="fixed inset-0 pointer-events-none z-0" aria-hidden>
+        <div className="absolute top-0 right-[20%] w-[500px] h-[500px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+        <div className="absolute bottom-[20%] left-[10%] w-[400px] h-[400px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.06) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+      </div>
+      <div className="relative z-10">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Top Nav Bar */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigate('/teacher/dashboard')}
-              className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-2 hover:bg-white/[0.06] rounded-lg transition-colors"
               title="Back to dashboard"
             >
               <ArrowLeft size={24} className="text-slate-400" />
@@ -338,13 +347,13 @@ const ClassDetail = () => {
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex space-x-1 bg-slate-800/50 p-1 rounded-xl mb-8 w-fit border border-slate-700/50 overflow-x-auto">
+        <div className="flex space-x-1 p-1 rounded-xl mb-8 w-fit border border-white/[0.06] overflow-x-auto" style={{ background: 'rgba(255,255,255,0.03)' }}>
           <button
             onClick={() => setActiveTab('overview')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
               activeTab === 'overview'
                 ? 'bg-indigo-500 text-white shadow-lg'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]'
             }`}
           >
             <LayoutGrid size={18} />
@@ -355,7 +364,7 @@ const ClassDetail = () => {
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
               activeTab === 'heatmap'
                 ? 'bg-indigo-500 text-white shadow-lg'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]'
             }`}
           >
             <Flag size={18} />
@@ -366,7 +375,7 @@ const ClassDetail = () => {
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all relative whitespace-nowrap ${
               activeTab === 'alerts'
                 ? 'bg-indigo-500 text-white shadow-lg'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]'
             }`}
           >
             <AlertCircle size={18} />
@@ -414,7 +423,7 @@ const ClassDetail = () => {
                         variants={itemVariants}
                         whileHover={{ y: -2 }}
                         onClick={() => handleMilestoneClick(milestone)}
-                        className="card p-4 flex-shrink-0 min-w-0 cursor-pointer hover:border-indigo-500/50 transition-colors"
+                        className="card p-4 flex-shrink-0 min-w-0 cursor-pointer hover:border-white/[0.12] transition-all duration-300"
                       >
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex-1">
@@ -471,7 +480,7 @@ const ClassDetail = () => {
                       key={material._id}
                       variants={itemVariants}
                       onClick={() => setPreviewMaterial(material)}
-                      className="card p-4 flex items-center gap-3 cursor-pointer hover:border-indigo-500/50 transition-colors"
+                      className="card p-4 flex items-center gap-3 cursor-pointer hover:border-white/[0.12] transition-all duration-300"
                     >
                       <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400">
                         <FileText size={20} />
@@ -503,9 +512,9 @@ const ClassDetail = () => {
                         <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                    <XAxis dataKey="topic" stroke="#94a3b8" style={{ fontSize: '12px' }} />
-                    <YAxis stroke="#94a3b8" style={{ fontSize: '12px' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis dataKey="topic" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
+                    <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
                     <Tooltip content={<CustomTooltip />} />
                     <Area
                       type="monotone"
@@ -528,7 +537,8 @@ const ClassDetail = () => {
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
-                    className="bg-slate-800 border-none text-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500"
+                    className="text-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500/50 border border-white/[0.08]"
+                    style={{ background: 'rgba(255,255,255,0.04)' }}
                   >
                     <option value="progress">Progress</option>
                     <option value="name">Name</option>
@@ -558,7 +568,7 @@ const ClassDetail = () => {
                       <motion.div
                         key={student._id}
                         variants={itemVariants}
-                        className="card p-4 hover:border-indigo-500/30 transition-colors"
+                        className="card p-4 hover:border-white/[0.12] transition-all duration-300"
                       >
                         <div className="flex items-center gap-3 mb-4">
                           <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-bold">
@@ -577,7 +587,7 @@ const ClassDetail = () => {
                           </div>
                           <ProgressBar progress={student.progress} size="sm" color="indigo" />
 
-                          <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-slate-700/50">
+                          <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-white/[0.06]">
                             <div>
                               <span className="block text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Score</span>
                               <span className="text-sm font-semibold text-slate-200">{Math.round(student.confidence || 0)}%</span>
@@ -672,15 +682,15 @@ const ClassDetail = () => {
               ) : (
                 <div className="overflow-x-auto relative">
                   {/* Scroll shadow indicators */}
-                  <div className="pointer-events-none absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-slate-900/80 to-transparent z-20" />
+                  <div className="pointer-events-none absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-[#050816]/80 to-transparent z-20" />
                   <table className="w-full text-sm border-collapse">
                     <thead>
-                      <tr className="bg-slate-900 sticky top-0 z-10">
-                        <th className="p-4 text-left font-semibold text-slate-400 border-b border-r border-slate-700/50 sticky left-0 bg-slate-900 min-w-[150px] shadow-[2px_0_5px_rgba(0,0,0,0.3)]">
+                      <tr className="bg-[#050816] sticky top-0 z-10">
+                        <th className="p-4 text-left font-semibold text-slate-400 border-b border-r border-white/[0.06] sticky left-0 bg-[#050816] min-w-[150px] shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
                           Student
                         </th>
                         {heatmapData.topics.map(topic => (
-                          <th key={topic} className="p-4 text-left font-semibold text-slate-400 border-b border-slate-700/50 min-w-[120px]">
+                          <th key={topic} className="p-4 text-left font-semibold text-slate-400 border-b border-white/[0.06] min-w-[120px]">
                             <div className="truncate w-full max-w-[150px]" title={topic}>
                               {topic}
                             </div>
@@ -690,8 +700,8 @@ const ClassDetail = () => {
                     </thead>
                     <tbody>
                       {heatmapData.students.map((student) => (
-                        <tr key={student.studentId} className="border-b border-slate-700/30">
-                          <td className="p-4 font-medium text-slate-200 border-r border-slate-700/50 sticky left-0 bg-slate-900/95 z-[5] shadow-[2px_0_5px_rgba(0,0,0,0.3)]">
+                        <tr key={student.studentId} className="border-b border-white/[0.04]">
+                          <td className="p-4 font-medium text-slate-200 border-r border-white/[0.06] sticky left-0 bg-[#050816]/95 z-[5] shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
                             {student.name}
                           </td>
                           {heatmapData.topics.map(topic => {
@@ -733,8 +743,8 @@ const ClassDetail = () => {
                       ))}
 
                       {/* Aggregate Summary Row */}
-                      <tr className="bg-slate-900/80 sticky bottom-0 border-t-2 border-slate-700">
-                        <td className="p-4 font-bold text-slate-50 border-r border-slate-700/50 sticky left-0 bg-slate-900/95 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.3)]">
+                      <tr className="bg-[#050816]/90 sticky bottom-0 border-t border-white/[0.08]">
+                        <td className="p-4 font-bold text-slate-50 border-r border-white/[0.06] sticky left-0 bg-[#050816]/95 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
                           Class Summary
                         </td>
                         {heatmapData.topics.map(topic => {
@@ -782,13 +792,13 @@ const ClassDetail = () => {
             {alertsLoading ? (
               <div className="space-y-4">
                 {[1, 2, 3].map((n) => (
-                  <div key={n} className="card p-6 animate-pulse border-l-4 border-slate-700">
+                  <div key={n} className="card p-6 animate-pulse border-l-4 border-white/[0.08]">
                     <div className="flex items-center gap-4 mb-3">
-                      <div className="w-10 h-10 rounded-full bg-slate-700"></div>
-                      <div className="h-5 w-40 bg-slate-700 rounded"></div>
+                      <div className="w-10 h-10 rounded-full bg-white/[0.06]"></div>
+                      <div className="h-5 w-40 bg-white/[0.06] rounded"></div>
                     </div>
-                    <div className="h-4 w-full bg-slate-800 rounded mb-2"></div>
-                    <div className="h-4 w-2/3 bg-slate-800 rounded"></div>
+                    <div className="h-4 w-full bg-white/[0.04] rounded mb-2"></div>
+                    <div className="h-4 w-2/3 bg-white/[0.04] rounded"></div>
                   </div>
                 ))}
               </div>
@@ -913,6 +923,7 @@ const ClassDetail = () => {
           </div>
         )}
       </main>
+      </div>
 
       {/* Modals */}
       <UploadMaterialModal

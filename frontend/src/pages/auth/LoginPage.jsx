@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Brain, GraduationCap, BookOpen, Mail, Lock, ArrowRight } from 'lucide-react';
@@ -8,7 +8,9 @@ import { useAuth } from '../../context/AuthContext';
 const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [role, setRole] = useState('student');
+  const location = useLocation();
+  const initialRole = new URLSearchParams(location.search).get('role');
+  const [role, setRole] = useState(initialRole === 'teacher' ? 'teacher' : 'student');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,8 +44,13 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-[#050816] flex items-center justify-center px-4 py-8 relative overflow-hidden">
+      {/* Ambient glows */}
+      <div className="fixed inset-0 pointer-events-none" aria-hidden>
+        <div className="absolute top-[-10%] left-[30%] w-[600px] h-[600px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.10) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+        <div className="absolute bottom-[10%] right-[20%] w-[400px] h-[400px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.07) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+      </div>
+      <div className="w-full max-w-md relative z-10">
         {/* Header */}
         <div className="text-center mb-8">
           <motion.div
@@ -58,6 +65,13 @@ const LoginPage = () => {
           </motion.div>
           <h1 className="text-4xl font-bold text-slate-50 mb-2">StudyAgent</h1>
           <p className="text-slate-400">AI-Powered Learning Analytics</p>
+        </div>
+
+        {/* Back to home */}
+        <div className="mb-4 flex justify-center">
+          <Link to="/" className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors">
+            ← Back to home
+          </Link>
         </div>
 
         {/* Card */}
@@ -79,7 +93,7 @@ const LoginPage = () => {
                 className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2 ${
                   role === 'student'
                     ? 'bg-indigo-600 text-white shadow-lg'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    : 'bg-white/[0.05] border border-white/[0.08] text-slate-400 hover:bg-white/[0.09] hover:text-slate-200'
                 }`}
               >
                 <BookOpen size={18} />
@@ -91,7 +105,7 @@ const LoginPage = () => {
                 className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2 ${
                   role === 'teacher'
                     ? 'bg-indigo-600 text-white shadow-lg'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    : 'bg-white/[0.05] border border-white/[0.08] text-slate-400 hover:bg-white/[0.09] hover:text-slate-200'
                 }`}
               >
                 <GraduationCap size={18} />
@@ -172,10 +186,10 @@ const LoginPage = () => {
           {/* Divider */}
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-700" />
+              <div className="w-full border-t border-white/[0.08]" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-slate-800 text-slate-400">New to StudyAgent?</span>
+              <span className="px-3 text-slate-500 text-xs" style={{ background: 'transparent' }}>New to StudyAgent?</span>
             </div>
           </div>
 

@@ -136,14 +136,14 @@ const ClassDetail = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900">
+      <div className="min-h-screen bg-[#050816]">
         <Navbar />
         <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="space-y-6">
-            <div className="h-5 w-36 bg-slate-700/50 rounded animate-pulse" />
-            <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50 space-y-4">
-              <div className="h-8 w-56 bg-slate-700/50 rounded animate-pulse" />
-              <div className="h-4 w-40 bg-slate-700/30 rounded animate-pulse" />
+            <div className="h-5 w-36 bg-white/[0.06] rounded animate-pulse" />
+            <div className="bg-white/[0.03] rounded-xl p-6 border border-white/[0.06] space-y-4">
+              <div className="h-8 w-56 bg-white/[0.06] rounded animate-pulse" />
+              <div className="h-4 w-40 bg-white/[0.04] rounded animate-pulse" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[1, 2, 3, 4].map(i => <CardSkeleton key={i} />)}
@@ -156,7 +156,7 @@ const ClassDetail = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-900">
+      <div className="min-h-screen bg-[#050816]">
         <Navbar />
         <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <button
@@ -177,10 +177,16 @@ const ClassDetail = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="min-h-screen bg-[#050816]">
+      {/* Ambient glows */}
+      <div className="fixed inset-0 pointer-events-none z-0" aria-hidden>
+        <div className="absolute top-0 right-[20%] w-[500px] h-[500px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+        <div className="absolute bottom-[20%] left-[10%] w-[400px] h-[400px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.06) 0%, transparent 70%)', filter: 'blur(80px)' }} />
+      </div>
+      <div className="relative z-10">
       <Navbar />
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -250,7 +256,7 @@ const ClassDetail = () => {
                     variants={itemVariants}
                     whileHover={{ y: -2 }}
                     onClick={() => navigate(`/student/plan/${plan.id}`)}
-                    className="card p-4 cursor-pointer hover:border-indigo-500/40 transition-colors"
+                    className="card p-4 cursor-pointer hover:border-white/[0.12] transition-all duration-300"
                   >
                     <div className="flex items-start justify-between gap-2 mb-3">
                       <div className="flex-1 min-w-0">
@@ -307,7 +313,7 @@ const ClassDetail = () => {
                       variants={itemVariants}
                       whileHover={{ y: -2 }}
                       onClick={() => setPreviewMaterial(material)}
-                      className="card p-4 hover:border-indigo-500/40 transition-colors cursor-pointer"
+                      className="card p-4 hover:border-white/[0.12] transition-all duration-300 cursor-pointer"
                     >
                       <div className="flex items-start gap-3">
                         <div className="p-2.5 bg-indigo-500/10 rounded-lg flex-shrink-0">
@@ -346,7 +352,7 @@ const ClassDetail = () => {
                 </div>
               ) : (
                 <div className="relative">
-                  <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-slate-700" />
+                  <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-white/[0.08]" />
 
                   <motion.div
                     className="space-y-4"
@@ -421,6 +427,7 @@ const ClassDetail = () => {
           </div>
         </div>
       </main>
+      </div>
 
       <PreAssessmentModal
         isOpen={showAssessment}
