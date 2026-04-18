@@ -19,8 +19,18 @@ import toast from 'react-hot-toast';
 import Navbar from '../../components/shared/Navbar';
 import Badge from '../../components/shared/Badge';
 import ProgressBar from '../../components/shared/ProgressBar';
+import { TopicCardSkeleton } from '../../components/ui/Skeleton';
+import Button from '../../components/ui/Button';
 import sessionService from '../../services/sessionService';
 import { ShieldAlert, Info, AlertTriangle } from 'lucide-react';
+
+const containerVariants = {
+  animate: { transition: { staggerChildren: 0.08 } },
+};
+const itemVariants = {
+  initial: { opacity: 0, y: 15 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+};
 
 const StudyPlanView = () => {
   const { id: planId } = useParams();
@@ -99,7 +109,7 @@ const StudyPlanView = () => {
   const getDifficultyStyle = (d) => {
     if (d === 'basic' || d === 'beginner') return 'bg-slate-600 text-slate-200';
     if (d === 'advanced') return 'bg-red-900 text-red-300';
-    return 'bg-amber-900 text-amber-300'; // intermediate
+    return 'bg-amber-900 text-amber-300';
   };
 
   const getDifficultyLabel = (d) => {
@@ -111,13 +121,13 @@ const StudyPlanView = () => {
   const getPriorKnowledgeStyle = (pk) => {
     if (pk === 'none') return 'bg-red-950 text-red-400';
     if (pk === 'strong') return 'bg-emerald-950 text-emerald-400';
-    return 'bg-yellow-950 text-yellow-400'; // partial
+    return 'bg-yellow-950 text-yellow-400';
   };
 
   const getPriorKnowledgeLabel = (pk) => {
     if (pk === 'none') return 'No Prior Knowledge';
     if (pk === 'strong') return 'Strong Knowledge';
-    return 'Some Knowledge'; // partial
+    return 'Some Knowledge';
   };
 
   const difficultyOrder = { basic: 0, beginner: 0, intermediate: 1, advanced: 2 };
@@ -160,9 +170,15 @@ const StudyPlanView = () => {
     return (
       <div className="min-h-screen bg-slate-900">
         <Navbar />
-        <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex justify-center py-16">
-            <div className="inline-block w-10 h-10 border-4 border-indigo-400 border-t-white rounded-full animate-spin" />
+        <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="space-y-4">
+            <div className="h-6 w-32 bg-slate-700/50 rounded animate-pulse mb-6" />
+            <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50 space-y-4">
+              <div className="h-8 w-48 bg-slate-700/50 rounded animate-pulse" />
+              <div className="h-4 w-64 bg-slate-700/30 rounded animate-pulse" />
+              <div className="h-3 w-full bg-slate-700/30 rounded animate-pulse" />
+            </div>
+            {[1, 2, 3, 4].map(i => <TopicCardSkeleton key={i} />)}
           </div>
         </main>
       </div>
@@ -173,11 +189,13 @@ const StudyPlanView = () => {
     return (
       <div className="min-h-screen bg-slate-900">
         <Navbar />
-        <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center">
-          <p className="text-slate-400 mb-4">Plan not found</p>
-          <button onClick={() => navigate('/student/dashboard')} className="btn-primary">
+        <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center flex flex-col items-center justify-center min-h-[60vh]">
+          <BookOpen className="w-12 h-12 text-slate-500 mb-4" />
+          <h3 className="text-lg font-bold text-slate-300 mb-1">Plan not found</h3>
+          <p className="text-slate-500 mb-4">This study plan may have been deleted.</p>
+          <Button onClick={() => navigate('/student/dashboard')}>
             Back to Dashboard
-          </button>
+          </Button>
         </main>
       </div>
     );
@@ -187,7 +205,7 @@ const StudyPlanView = () => {
     <div className="min-h-screen bg-slate-900">
       <Navbar />
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -218,7 +236,7 @@ const StudyPlanView = () => {
                 <Sparkles className="w-8 h-8 text-indigo-400" />
               </div>
               <div className="flex-1">
-                <h1 className="text-2xl font-bold text-slate-50 mb-1">{plan.title}</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-50 mb-1">{plan.title}</h1>
                 <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400 mb-4">
                   <span className="flex items-center gap-1">
                     <BookOpen size={14} />
@@ -280,9 +298,13 @@ const StudyPlanView = () => {
           {/* Vertical timeline line */}
           <div className="absolute left-7 top-0 bottom-0 w-0.5 bg-gradient-to-b from-cyan-500/50 via-slate-700 to-slate-800" />
 
-          <div className="space-y-4">
+          <motion.div
+            className="space-y-4"
+            variants={containerVariants}
+            initial="initial"
+            animate="animate"
+          >
             {sortedTopics.map((topic, idx) => {
-              // Find original index for starting session (since we sorted)
               const originalIdx = plan.topics.findIndex(t => t.name === topic.name);
               const isExpanded = expandedTopic === idx;
               const isCurrent = topic.status === 'in_progress';
@@ -292,9 +314,7 @@ const StudyPlanView = () => {
               return (
                 <motion.div
                   key={idx}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: idx * 0.06, duration: 0.4 }}
+                  variants={itemVariants}
                   className="relative pl-16"
                 >
                   {/* Timeline node */}
@@ -364,31 +384,27 @@ const StudyPlanView = () => {
                             <CheckCircle2 size={18} />
                           </div>
                         ) : unlocked ? (
-                          <button
+                          <Button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleStartTopic(topic, originalIdx);
                             }}
-                            disabled={startingSession === originalIdx}
-                            className={`text-xs py-1.5 px-3 rounded-lg flex items-center gap-1.5 transition-colors font-medium ${
+                            loading={startingSession === originalIdx}
+                            className={`text-xs py-1.5 px-3 ${
                               topic.status === 'needs_review'
-                                ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                                ? 'bg-amber-600 hover:bg-amber-500'
                                 : topic.status === 'in_progress'
-                                ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
-                                : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                                ? 'bg-cyan-600 hover:bg-cyan-500'
+                                : ''
                             }`}
                           >
-                            {startingSession === originalIdx ? (
-                              <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <Play size={12} />
-                            )}
-                            {topic.status === 'needs_review' 
-                              ? 'Retry Quiz' 
-                              : topic.status === 'in_progress' 
-                              ? 'Continue Session' 
+                            <Play size={12} />
+                            {topic.status === 'needs_review'
+                              ? 'Retry Quiz'
+                              : topic.status === 'in_progress'
+                              ? 'Continue Session'
                               : 'Start Topic'}
-                          </button>
+                          </Button>
                         ) : null}
                         {isClickable && (
                           isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />
@@ -418,7 +434,7 @@ const StudyPlanView = () => {
                         )}
                         {topic.pageRange && topic.pageRange.length === 2 && (
                           <p className="text-xs text-slate-500">
-                            Pages {topic.pageRange[0]}–{topic.pageRange[1]}
+                            Pages {topic.pageRange[0]}\u2013{topic.pageRange[1]}
                           </p>
                         )}
                       </motion.div>
@@ -427,7 +443,7 @@ const StudyPlanView = () => {
                 </motion.div>
               );
             })}
-          </div>
+          </motion.div>
         </div>
       </main>
     </div>

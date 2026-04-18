@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Clock, BookOpen, HelpCircle, Play, BarChart3, AlertTriangle, Send, Lightbulb } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Clock, BookOpen, HelpCircle, Play, BarChart3, AlertTriangle, Send, Lightbulb, Menu, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Navbar from '../../components/shared/Navbar';
 import ChatMessage from '../../components/student/ChatMessage';
 import QuizMessage, { parseQuizFromMessage } from '../../components/student/QuizMessage';
 import TopicRoadmap from '../../components/student/TopicRoadmap';
+import { ChatBubbleSkeleton } from '../../components/ui/Skeleton';
+import Button from '../../components/ui/Button';
 import sessionService from '../../services/sessionService';
 import FinalQuizModal from '../../components/student/FinalQuizModal';
 import { Activity, CheckCircle2 } from 'lucide-react';
@@ -27,6 +29,7 @@ const StudySession = () => {
   const [autoMessageSent, setAutoMessageSent] = useState(false);
   const [sessionStartTime] = useState(Date.now());
   const [progress, setProgress] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sessionStats, setSessionStats] = useState({
     questionsAsked: 0,
     correctAnswers: 0,
@@ -68,8 +71,7 @@ const StudySession = () => {
         };
 
         setSessionData(mappedSessionData);
-        
-        // Initialize stats from existing data if resuming
+
         setSessionStats({
           questionsAsked: apiData.performanceMetrics?.questionsAnswered || 0,
           correctAnswers: apiData.performanceMetrics?.correctCount || 0,
@@ -77,7 +79,6 @@ const StudySession = () => {
           confidence: Math.round((apiData.performanceMetrics?.avgConfidence || 0) * 100)
         });
 
-        // Load plan topics for sidebar if session has a plan
         if (apiData.planId) {
           const planData = typeof apiData.planId === 'object' ? apiData.planId : null;
           if (planData && planData.topics) {
@@ -89,7 +90,6 @@ const StudySession = () => {
               priorKnowledge: t.priorKnowledge,
             })));
           } else {
-            // Fetch plan separately
             try {
               const planRes = await sessionService.getPlanDetails(apiData.planId);
               const plan = planRes.data;
@@ -106,7 +106,6 @@ const StudySession = () => {
           }
         }
 
-        // Set existing messages
         if (apiData.messages && apiData.messages.length > 0) {
           setMessages(apiData.messages.map(m => ({
             ...m,
@@ -144,7 +143,6 @@ const StudySession = () => {
 
   // Timer effect
   useEffect(() => {
-    // Sync sessionTime with existing duration once session data is loaded
     if (sessionData && sessionData.duration !== undefined) {
       setSessionTime(sessionData.duration);
     }
@@ -163,45 +161,32 @@ const StudySession = () => {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  // Progress calculation logic
   const calculateProgressValue = () => {
     let score = 0;
-    
-    // Signal 1: Messages exchanged (max 30 points)
     const humanMessages = messages.filter(m => m.role === 'user').length;
     score += Math.min(humanMessages * 5, 30);
-    
-    // Signal 2: Quiz performance (max 40 points)
     if (sessionStats.totalAnswered > 0) {
       score += Math.round((sessionStats.correctAnswers / sessionStats.totalAnswered) * 40);
     }
-    
-    // Signal 3: Time spent (max 20 points)
     const elapsedMinutes = (Date.now() - sessionStartTime) / 60000;
     score += Math.min(Math.floor(elapsedMinutes / 2) * 5, 20);
-    
-    // Signal 4: Completion bonus (10 points)
     if (sessionStats.totalAnswered >= 2 && sessionStats.confidence >= 50) {
       score += 10;
     }
-    
     return Math.min(score, 100);
   };
 
-  // Update progress periodically
   useEffect(() => {
     const interval = setInterval(() => {
       setProgress(calculateProgressValue());
-    }, 30000); // Every 30 seconds
+    }, 30000);
     return () => clearInterval(interval);
   }, [messages.length, sessionStats, sessionStartTime]);
 
-  // Update progress whenever messages or stats change
   useEffect(() => {
     setProgress(calculateProgressValue());
   }, [messages.length, sessionStats]);
 
-  // Message splitting utility — uses the reliable CORRECT_ANSWER marker
   const splitMessageContent = (content) => {
     const parsed = parseQuizFromMessage(content);
     if (!parsed) return { hasQuiz: false, content };
@@ -210,14 +195,13 @@ const StudySession = () => {
       hasQuiz: true,
       explanation: parsed.contentBefore,
       questionText: parsed.questionText,
-      options: parsed.options,       // [{ letter, text, full }, ...]
+      options: parsed.options,
       correctLetter: parsed.correctLetter,
     };
   };
 
-  // Fix 5: handleQuizAnswer receives (isCorrect, selectedLetter, correctLetter)
   const handleQuizAnswer = (isCorrect, selectedLetter, correctLetter) => {
-    if (endingSession) return; // Prevent answering quizzes if session is already ended
+    if (endingSession) return;
 
     setSessionStats(prev => {
       const newCorrect = prev.correctAnswers + (isCorrect ? 1 : 0);
@@ -230,7 +214,6 @@ const StudySession = () => {
       };
     });
 
-    // Fix 4: auto-message with clear result so agent knows what happened
     const feedback = isCorrect
       ? `I answered ${selectedLetter}) and got it correct.`
       : `I answered ${selectedLetter}) which was wrong. The correct answer was ${correctLetter}). Please explain why ${correctLetter}) is correct in simple terms.`;
@@ -259,12 +242,10 @@ const StudySession = () => {
         };
         setMessages((prev) => [...prev, aiMessage]);
 
-        // Automatically trigger quiz modal if completed
         if (response.data.session.completedTopics?.includes(sessionData.topicName)) {
           setShowQuizModal(true);
         }
 
-        // Update session data with latest from backend
         if (response.data.session) {
           setSessionData((prev) => ({
             ...prev,
@@ -283,7 +264,7 @@ const StudySession = () => {
         toast.error('This session has already been ended.');
         setEndingSession(true);
         setSending(false);
-        return; // Don't add an AI error bubble
+        return;
       }
 
       console.error('Error sending message:', error);
@@ -335,7 +316,6 @@ const StudySession = () => {
       };
       await sessionService.endSession(sessionId, endData);
       toast.success('Session ended!');
-      // Navigate back to plan if we came from one, otherwise dashboard
       if (sessionData?.planId) {
         navigate(`/student/plan/${sessionData.planId}`);
       } else {
@@ -351,10 +331,18 @@ const StudySession = () => {
     return (
       <div className="min-h-screen bg-slate-900">
         <Navbar />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex items-center justify-center">
-          <div className="text-center">
-            <div className="inline-block w-12 h-12 border-4 border-indigo-400 border-t-white rounded-full animate-spin mb-4" />
-            <p className="text-slate-400">Loading session...</p>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="space-y-4">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="h-10 w-10 bg-slate-700/50 rounded-lg animate-pulse" />
+              <div className="space-y-2">
+                <div className="h-5 w-48 bg-slate-700/50 rounded animate-pulse" />
+                <div className="h-3 w-32 bg-slate-700/30 rounded animate-pulse" />
+              </div>
+            </div>
+            <ChatBubbleSkeleton align="left" />
+            <ChatBubbleSkeleton align="right" />
+            <ChatBubbleSkeleton align="left" />
           </div>
         </main>
       </div>
@@ -365,17 +353,86 @@ const StudySession = () => {
     return (
       <div className="min-h-screen bg-slate-900">
         <Navbar />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center">
-            <p className="text-slate-400 mb-4">Session not found</p>
-            <button onClick={() => navigate('/student/dashboard')} className="btn-primary">
-              Back to Dashboard
-            </button>
-          </div>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col items-center justify-center min-h-[60vh]">
+          <BookOpen className="w-12 h-12 text-slate-500 mb-4" />
+          <h3 className="text-lg font-bold text-slate-300 mb-1">Session not found</h3>
+          <p className="text-slate-500 mb-4">This session may have been deleted or ended.</p>
+          <Button onClick={() => navigate('/student/dashboard')}>
+            Back to Dashboard
+          </Button>
         </main>
       </div>
     );
   }
+
+  const SidebarContent = () => (
+    <div className="space-y-6">
+      {/* Topic Roadmap from Plan */}
+      {planTopics.length > 0 && (
+        <TopicRoadmap
+          topics={planTopics}
+          title="Study Plan Topics"
+          subtitle={sessionData.className}
+        />
+      )}
+
+      {/* Session Stats */}
+      <motion.div
+        className="card p-4 relative overflow-hidden"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <Activity className="absolute -bottom-2 -right-2 w-16 h-16 text-indigo-500/10 -rotate-12" />
+
+        <h3 className="font-semibold text-slate-50 mb-4">Session Stats</h3>
+        <div className="space-y-3 relative z-10">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400 flex items-center gap-1">
+              <HelpCircle className="w-3 h-3" /> Questions Asked
+            </span>
+            <span className="text-sm font-bold text-slate-50">{sessionStats.questionsAsked}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400 flex items-center gap-1">
+              <span>&#10003;</span> Correct Answers
+            </span>
+            <span className="text-sm font-bold text-emerald-400">
+              {sessionStats.correctAnswers}/{sessionStats.totalAnswered}
+            </span>
+          </div>
+          <div className="pt-2 border-t border-slate-700/50 flex items-center justify-between">
+            <span className="text-xs text-slate-400 flex items-center gap-1">
+              <Lightbulb className="w-3 h-3" /> Confidence
+            </span>
+            <span className="text-sm font-bold text-cyan-300">{sessionStats.confidence}%</span>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Weak Spots */}
+      {sessionData.weakTopics && sessionData.weakTopics.length > 0 && (
+        <motion.div
+          className="card p-4 bg-amber-600/10 border-amber-600/30"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <h3 className="font-semibold text-slate-50 mb-2 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            Weak Spots Detected
+          </h3>
+          <div className="space-y-2">
+            {sessionData.weakTopics.map((wt, idx) => (
+              <p key={idx} className="text-xs text-slate-300">
+                &bull; {wt.topic}
+              </p>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
@@ -385,7 +442,15 @@ const StudySession = () => {
       <div className="bg-slate-800 border-b border-slate-700 sticky top-16 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              {/* Mobile sidebar toggle */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden p-2 hover:bg-slate-700 rounded-lg transition-colors"
+                title="Open sidebar"
+              >
+                <Menu className="w-5 h-5 text-slate-300" />
+              </button>
               <button
                 onClick={() => {
                   if (sessionData?.planId) navigate(`/student/plan/${sessionData.planId}`);
@@ -397,22 +462,22 @@ const StudySession = () => {
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div>
-                <h1 className="text-lg font-bold text-slate-50">{sessionData.topicName}</h1>
+                <h1 className="text-base sm:text-lg font-bold text-slate-50">{sessionData.topicName}</h1>
                 <p className="text-xs text-slate-400">{sessionData.className}</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
               <div className="hidden sm:flex items-center gap-3 mr-4">
                 <div className="text-right">
                   <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Progress</p>
-                  <p className="text-sm font-bold text-slate-300">{progress}% complete</p>
+                  <p className="text-sm font-bold text-slate-300">{progress}%</p>
                 </div>
-                <div className="w-32 h-2.5 bg-slate-700 rounded-full overflow-hidden border border-slate-600/50">
-                  <motion.div 
+                <div className="w-24 sm:w-32 h-2.5 bg-slate-700 rounded-full overflow-hidden border border-slate-600/50">
+                  <motion.div
                     className={`h-full ${
-                      progress < 30 ? 'bg-red-500' : 
-                      progress < 60 ? 'bg-yellow-500' : 
+                      progress < 30 ? 'bg-red-500' :
+                      progress < 60 ? 'bg-yellow-500' :
                       progress < 85 ? 'bg-blue-500' : 'bg-emerald-500'
                     }`}
                     initial={{ width: 0 }}
@@ -426,35 +491,70 @@ const StudySession = () => {
                 <Clock className="w-4 h-4 text-cyan-300" />
                 <span className="text-sm font-mono text-cyan-300">{formatTime(sessionTime)}</span>
               </div>
-              
+
               {progress >= 95 || (sessionStats.totalAnswered >= 5 && sessionStats.confidence >= 70) ? (
                 <div className="flex flex-col items-end">
-                  <button
+                  <Button
                     onClick={() => setShowQuizModal(true)}
                     disabled={endingSession}
-                    className="btn-primary text-sm flex items-center gap-2"
+                    className="text-sm"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    Finish Topic
-                  </button>
-                  <button onClick={handleSkipAndEnd} className="text-[10px] text-slate-400 hover:text-slate-300 mt-1">Skip Assessment & End</button>
+                    <span className="hidden sm:inline">Finish Topic</span>
+                  </Button>
+                  <button onClick={handleSkipAndEnd} className="text-[10px] text-slate-400 hover:text-slate-300 mt-1">Skip & End</button>
                 </div>
               ) : (
                 <div className="flex flex-col items-end">
-                  <button
+                  <Button
+                    variant="danger"
                     onClick={() => setShowQuizModal(true)}
                     disabled={endingSession}
-                    className="btn-danger text-sm"
+                    className="text-sm"
                   >
-                    End Session
-                  </button>
-                  <button onClick={handleSkipAndEnd} className="text-[10px] text-slate-400 hover:text-slate-300 mt-1">Skip Assessment & End</button>
+                    <span className="hidden sm:inline">End Session</span>
+                    <span className="sm:hidden">End</span>
+                  </Button>
+                  <button onClick={handleSkipAndEnd} className="text-[10px] text-slate-400 hover:text-slate-300 mt-1">Skip & End</button>
                 </div>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Mobile Sidebar Drawer Overlay */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            <motion.div
+              className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSidebarOpen(false)}
+            />
+            <motion.div
+              className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-slate-900 border-l border-slate-700 z-50 lg:hidden overflow-y-auto p-6"
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-bold text-slate-50">Session Info</h2>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+              <SidebarContent />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -463,9 +563,10 @@ const StudySession = () => {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto mb-6 space-y-4 pr-2">
             {messages.length === 0 && !sending ? (
-              <div className="text-center py-12">
-                <div className="inline-block w-8 h-8 border-4 border-indigo-400 border-t-white rounded-full animate-spin mb-3" />
-                <p className="text-slate-400">Preparing your study session...</p>
+              <div className="text-center py-12 space-y-3">
+                <ChatBubbleSkeleton align="left" />
+                <ChatBubbleSkeleton align="right" />
+                <p className="text-slate-400 text-sm">Preparing your study session...</p>
               </div>
             ) : (
               messages.map((msg, idx) => {
@@ -484,7 +585,7 @@ const StudySession = () => {
                         {parsed.explanation && (
                           <ChatMessage message={{ ...msg, content: parsed.explanation }} />
                         )}
-                        <QuizMessage 
+                        <QuizMessage
                           questionText={parsed.questionText}
                           options={parsed.options}
                           correctLetter={parsed.correctLetter}
@@ -535,7 +636,7 @@ const StudySession = () => {
                 <motion.button
                   key={key}
                   onClick={() => handleQuickAction(key)}
-                  className="px-3 py-1 rounded-full text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors flex items-center gap-1"
+                  className="px-3 py-1 rounded-full text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 transition-all duration-200 flex items-center gap-1 hover:scale-[1.02] active:scale-[0.98]"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
@@ -554,88 +655,22 @@ const StudySession = () => {
               onChange={(e) => setInputValue(e.target.value)}
               placeholder="Ask anything about the topic..."
               disabled={sending}
-              className="input-base flex-1"
+              className="input-base flex-1 text-sm sm:text-base"
             />
-            <motion.button
+            <Button
               type="submit"
               disabled={!inputValue.trim() || sending}
-              className="btn-primary px-4 py-2"
-              title="Send message"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              loading={sending}
+              className="px-4 py-2"
             >
               <Send className="w-4 h-4" />
-            </motion.button>
+            </Button>
           </form>
         </div>
 
-        {/* Sidebar */}
-        <div className="lg:col-span-1 space-y-6">
-          {/* Topic Roadmap from Plan */}
-          {planTopics.length > 0 && (
-            <TopicRoadmap
-              topics={planTopics}
-              title="Study Plan Topics"
-              subtitle={sessionData.className}
-            />
-          )}
-
-          {/* Session Stats */}
-          <motion.div
-            className="card p-4 relative overflow-hidden"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            {/* Subtle background activity chart decoration */}
-            <Activity className="absolute -bottom-2 -right-2 w-16 h-16 text-indigo-500/10 -rotate-12" />
-            
-            <h3 className="font-semibold text-slate-50 mb-4">Session Stats</h3>
-            <div className="space-y-3 relative z-10">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400 flex items-center gap-1">
-                  <HelpCircle className="w-3 h-3" /> Questions Asked
-                </span>
-                <span className="text-sm font-bold text-slate-50">{sessionStats.questionsAsked}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400 flex items-center gap-1">
-                  <span>&#10003;</span> Correct Answers
-                </span>
-                <span className="text-sm font-bold text-emerald-400">
-                  {sessionStats.correctAnswers}/{sessionStats.totalAnswered}
-                </span>
-              </div>
-              <div className="pt-2 border-t border-slate-700/50 flex items-center justify-between">
-                <span className="text-xs text-slate-400 flex items-center gap-1">
-                  <Lightbulb className="w-3 h-3" /> Confidence
-                </span>
-                <span className="text-sm font-bold text-cyan-300">{sessionStats.confidence}%</span>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Weak Spots — only show if actually detected */}
-          {sessionData.weakTopics && sessionData.weakTopics.length > 0 && (
-            <motion.div
-              className="card p-4 bg-amber-600/10 border-amber-600/30"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-            >
-              <h3 className="font-semibold text-slate-50 mb-2 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" />
-                Weak Spots Detected
-              </h3>
-              <div className="space-y-2">
-                {sessionData.weakTopics.map((wt, idx) => (
-                  <p key={idx} className="text-xs text-slate-300">
-                    &bull; {wt.topic}
-                  </p>
-                ))}
-              </div>
-            </motion.div>
-          )}
+        {/* Desktop Sidebar */}
+        <div className="hidden lg:block lg:col-span-1">
+          <SidebarContent />
         </div>
       </main>
 

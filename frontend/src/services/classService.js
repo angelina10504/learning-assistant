@@ -71,6 +71,12 @@ const classService = {
   getMasteryHeatmap: (classId) => {
     return api.get(`/classes/${classId}/mastery-heatmap`);
   },
+  getClassAlerts: (classId) => {
+    return api.get(`/classes/${classId}/alerts`);
+  },
+  getAlertsSummary: () => {
+    return api.get('/classes/alerts-summary');
+  },
 
   getMaterialPreview: (classId, materialId) => {
     return api.get(`/classes/${classId}/materials/${materialId}/preview`, {

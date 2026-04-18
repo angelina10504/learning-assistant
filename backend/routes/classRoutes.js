@@ -52,6 +52,7 @@ const Document = require('../models/Document')
 const StudySession = require('../models/StudySession')
 const StudyPlan = require('../models/StudyPlan')
 const QuizResult = require('../models/QuizResult')
+const { computeMasteryScore } = require('../utils/masteryScore')
 
 // Helper: Generate random 6-char alphanumeric class code
 const generateClassCode = () => {
@@ -280,6 +281,77 @@ router.post('/join', protect, authorize('student'), async (req, res) => {
             .populate('materials', 'originalName uploadedAt')
 
         res.json(populatedClass)
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
+// GET /api/classes/alerts-summary - Lightweight endpoint to get total alerts for teacher
+router.get('/alerts-summary', protect, authorize('teacher'), async (req, res) => {
+    try {
+        const classes = await Class.find({ teacherId: req.user._id })
+        const classIds = classes.map(c => c._id)
+        
+        const [sessions, plans] = await Promise.all([
+            StudySession.find({ classId: { $in: classIds } }),
+            StudyPlan.find({ classId: { $in: classIds } })
+        ])
+
+        let totalWeakTopics = 0
+        let totalInterventions = 0
+
+        const now = new Date()
+        const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+        const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000)
+
+        for (const cls of classes) {
+            const classIdStr = cls._id.toString()
+            const classSessions = sessions.filter(s => s.classId.toString() === classIdStr)
+            const classPlans = plans.filter(p => p.classId.toString() === classIdStr)
+            
+            // Get unique student count from StudyPlans
+            const enrolledStudentIds = new Set(classPlans.map(p => p.studentId.toString()))
+            const totalStudents = enrolledStudentIds.size > 0 ? enrolledStudentIds.size : 1
+
+            // Count class-wide weak topics
+            const topicsSet = new Set()
+            classPlans.forEach(p => p.topics?.forEach(t => topicsSet.add(t.name)))
+            
+            for (const topicName of topicsSet) {
+                const strugglingStudents = new Set()
+                
+                // From sessions
+                classSessions.forEach(s => {
+                    if (s.weakTopics?.some(wt => wt.topic === topicName)) {
+                        strugglingStudents.add(s.studentId.toString())
+                    }
+                })
+
+                const affectedRatio = strugglingStudents.size / totalStudents
+                if (affectedRatio > 0.40) {
+                    totalWeakTopics++
+                }
+            }
+
+            // Count interventions
+            const nearMilestones = cls.milestones?.filter(m => 
+                m.deadline <= threeDaysFromNow && m.deadline >= now
+            ) || []
+
+            cls.students.forEach(studentId => {
+                const sId = studentId.toString()
+                const studentSessions = classSessions.filter(s => s.studentId.toString() === sId)
+                const hasRecentSession = studentSessions.some(s => new Date(s.startedAt) >= threeDaysAgo)
+
+                if (!hasRecentSession) {
+                    nearMilestones.forEach(() => {
+                        totalInterventions++
+                    })
+                }
+            })
+        }
+        
+        res.json({ totalWeakTopics, totalInterventions })
     } catch (error) {
         res.status(500).json({ message: error.message })
     }
@@ -986,51 +1058,19 @@ router.get('/:id/mastery-heatmap', protect, authorize('teacher'), async (req, re
         const studentMastery = await Promise.all(classData.students.map(async (student) => {
             const studentId = student._id.toString()
             const studentPlan = studyPlans.find(p => p.studentId.toString() === studentId)
-            const studentSessions = sessions.filter(s => s.studentId.toString() === studentId)
-            const studentResults = quizResults.filter(r => r.studentId.toString() === studentId)
 
             const mastery = {}
 
             allTopics.forEach(topicName => {
-                let tier = 'not_started'
+                const topicSessions = sessions.filter(s => s.studentId.toString() === studentId && s.topicName === topicName)
+                const topicResults = quizResults.filter(r => r.studentId.toString() === studentId && r.topicName === topicName)
+                const planTopic = studentPlan ? studentPlan.topics.find(t => t.name === topicName) : null
 
-                // 1. In-session performance (25 pts)
-                const topicSessions = studentSessions.filter(s => s.topicName === topicName)
-                const inSessionCorrect = topicSessions.reduce((sum, s) => sum + (s.correctAnswers || 0), 0)
-                const inSessionTotal = topicSessions.reduce((sum, s) => sum + (s.questionsAsked || 0), 0)
-                const c1 = inSessionTotal > 0 ? (inSessionCorrect / inSessionTotal) * 25 : 0
-
-                // 2. Final quiz performance (40 pts)
-                // Get most recent result for this topic
-                const topicResults = studentResults.filter(r => r.topicName === topicName).sort((a,b) => b.completedAt - a.completedAt)
-                const latestResult = topicResults.length > 0 ? topicResults[0] : null
-                const c2 = latestResult ? (latestResult.score / 100) * 40 : 0
-
-                // 3. Session engagement (20 pts)
-                const totalExchanges = topicSessions.reduce((sum, s) => sum + (s.messages?.length || 0), 0)
-                const totalMinutes = topicSessions.reduce((sum, s) => sum + Math.round((s.duration || 0) / 60), 0)
-                const exchangeScore = Math.min(totalExchanges / 10, 1) * 12
-                const timeScore = Math.min(totalMinutes / 20, 1) * 8
-                const c3 = exchangeScore + timeScore
-
-                // 4. Completion & recovery (15 pts)
-                let c4 = 0
-                if (studentPlan) {
-                    const planTopic = studentPlan.topics.find(t => t.name === topicName)
-                    const completionBonus = planTopic?.status === 'completed' ? 10 : 
-                                            planTopic?.status === 'in_progress' ? 4 : 0
-                    const retryBonus = Math.min((latestResult?.attemptNumber || 0) > 1 ? 5 : 0, 5)
-                    c4 = completionBonus + retryBonus
-                }
-
-                const totalScore = Math.round(c1 + c2 + c3 + c4)
-
-                // Assign tier based on explicitly requested thresholds
-                if (totalScore >= 80)      tier = 'mastered'
-                else if (totalScore >= 60) tier = 'proficient'
-                else if (totalScore >= 40) tier = 'developing'
-                else if (totalScore > 0 || topicSessions.length > 0) tier = 'emerging'
-
+                const { tier } = computeMasteryScore({
+                    sessions: topicSessions,
+                    quizResults: topicResults,
+                    planTopic
+                })
                 mastery[topicName] = tier
             })
 
@@ -1044,6 +1084,182 @@ router.get('/:id/mastery-heatmap', protect, authorize('teacher'), async (req, re
         res.json({
             topics: allTopics,
             students: studentMastery
+        })
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
+
+// GET /api/classes/:id/alerts - Get proactive alerts for the teacher
+router.get('/:id/alerts', protect, authorize('teacher'), async (req, res) => {
+    try {
+        const classId = req.params.id
+        const classData = await Class.findById(classId).populate('students', 'name')
+        if (!classData) return res.status(404).json({ message: 'Class not found' })
+
+        const [sessions, plans, results] = await Promise.all([
+            StudySession.find({ classId }),
+            StudyPlan.find({ classId }),
+            QuizResult.find({ classId })
+        ])
+
+        // Total enrolled students based on StudyPlans
+        const enrolledStudentIds = new Set()
+        plans.forEach(p => enrolledStudentIds.add(p.studentId.toString()))
+        const totalStudents = enrolledStudentIds.size > 0 ? enrolledStudentIds.size : 1
+
+        const topicsSet = new Set()
+        plans.forEach(p => p.topics?.forEach(t => topicsSet.add(t.name)))
+        const allTopics = Array.from(topicsSet)
+
+        // 1. Class-Wide Alerts (Red)
+        const classWide = []
+
+        allTopics.forEach(topicName => {
+            const strugglingStudents = new Set()
+            
+            // Check StudySession weakTopics
+            sessions.forEach(s => {
+                if (s.weakTopics?.some(wt => wt.topic === topicName)) {
+                    strugglingStudents.add(s.studentId.toString())
+                }
+            })
+
+            // Check Heatmap Tiers (Emerging)
+            classData.students.forEach(student => {
+                const sId = student._id.toString()
+                const sPlan = plans.find(p => p.studentId.toString() === sId)
+                const planTopic = sPlan ? sPlan.topics?.find(t => t.name === topicName) : null
+                
+                const sSessions = sessions.filter(s => s.studentId.toString() === sId && s.topicName === topicName)
+                const sResults = results.filter(r => r.studentId.toString() === sId && r.topicName === topicName)
+                
+                const { tier } = computeMasteryScore({
+                    sessions: sSessions,
+                    quizResults: sResults,
+                    planTopic
+                })
+                if (tier === 'emerging') strugglingStudents.add(sId)
+            })
+
+            const affectedRatio = strugglingStudents.size / totalStudents
+            if (affectedRatio > 0.40) {
+                classWide.push({
+                    topicName,
+                    affectedCount: strugglingStudents.size,
+                    totalStudents,
+                    percentage: Math.round(affectedRatio * 100)
+                })
+            }
+        })
+
+        // Sort classWide descending by percentage, take top 3
+        classWide.sort((a, b) => b.percentage - a.percentage)
+        const topClassWide = classWide.slice(0, 3)
+
+        // 2. Intervention Alerts (Amber)
+        const interventions = []
+        const now = new Date()
+        const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000)
+        const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+
+        const nearMilestones = classData.milestones.filter(m => 
+            m.deadline <= threeDaysFromNow && m.deadline >= now
+        )
+
+        classData.students.forEach(student => {
+            const sId = student._id.toString()
+            const studentSessions = sessions.filter(s => s.studentId.toString() === sId)
+            
+            // Check timestamp
+            const hasRecentSession = studentSessions.some(s => new Date(s.startedAt) >= threeDaysAgo)
+
+            if (!hasRecentSession) {
+                nearMilestones.forEach(m => {
+                    interventions.push({
+                        studentId: sId,
+                        studentName: student.name,
+                        milestoneName: m.topic,
+                        daysUntilDeadline: Math.ceil((m.deadline - now) / (1000 * 60 * 60 * 24)),
+                        lastSessionDate: studentSessions.length > 0 
+                            ? new Date(Math.max(...studentSessions.map(s => new Date(s.startedAt).getTime())))
+                            : null
+                    })
+                })
+            }
+        })
+
+        // Sort interventions urgency
+        interventions.sort((a, b) => a.daysUntilDeadline - b.daysUntilDeadline)
+
+        // 3. AI Recommendations (Cyan)
+        const recommendations = []
+        let lowestTopic = null
+        let lowestScore = 101
+
+        const hasAnyQuizResults = results.length > 0
+
+        if (hasAnyQuizResults) {
+            allTopics.forEach(topicName => {
+                const topicResults = results.filter(r => r.topicName === topicName)
+                // Filter to unique students for this topic
+                const uniqueStudentsForTopic = new Set(topicResults.map(r => r.studentId.toString()))
+                
+                if (uniqueStudentsForTopic.size >= 2) {
+                    const avgScore = topicResults.reduce((sum, r) => sum + r.score, 0) / topicResults.length
+                    if (avgScore < lowestScore) {
+                        lowestScore = avgScore
+                        // calculate tier from avgScore just for recommendation purpose roughly
+                        let tier = 'emerging'
+                        if (avgScore >= 80) tier = 'mastered'
+                        else if (avgScore >= 60) tier = 'proficient'
+                        else if (avgScore >= 40) tier = 'developing'
+
+                        lowestTopic = {
+                            topicName,
+                            avgScore: Math.round(avgScore),
+                            tier,
+                            studentCount: uniqueStudentsForTopic.size
+                        }
+                    }
+                }
+            })
+        } else {
+            // Fallback: count needs_review grouped by topicName
+            let highestNeedsReviewCount = -1
+            allTopics.forEach(topicName => {
+                const needsReviewStudents = new Set()
+                plans.forEach(p => {
+                    const t = p.topics?.find(top => top.name === topicName)
+                    if (t?.status === 'needs_review') {
+                        needsReviewStudents.add(p.studentId.toString())
+                    }
+                })
+                
+                if (needsReviewStudents.size >= 2 && needsReviewStudents.size > highestNeedsReviewCount) {
+                    highestNeedsReviewCount = needsReviewStudents.size
+                    lowestTopic = {
+                        topicName,
+                        avgScore: Math.round(100 - (needsReviewStudents.size / totalStudents * 100)),
+                        tier: 'emerging',
+                        studentCount: needsReviewStudents.size
+                    }
+                }
+            })
+        }
+
+        if (lowestTopic) {
+            recommendations.push(lowestTopic)
+        }
+
+        const totalCount = topClassWide.length + interventions.length + recommendations.length
+
+        res.json({
+            classWide: topClassWide,
+            interventions,
+            recommendations,
+            totalCount
         })
     } catch (error) {
         res.status(500).json({ message: error.message })

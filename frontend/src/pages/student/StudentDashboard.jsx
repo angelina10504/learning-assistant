@@ -8,8 +8,18 @@ import ProgressBar from '../../components/shared/ProgressBar';
 import Badge from '../../components/shared/Badge';
 import TopicRoadmap from '../../components/student/TopicRoadmap';
 import JoinClassModal from '../../components/student/JoinClassModal';
+import { CardSkeleton, StatCardSkeleton } from '../../components/ui/Skeleton';
+import Button from '../../components/ui/Button';
 import classService from '../../services/classService';
 import sessionService from '../../services/sessionService';
+
+const containerVariants = {
+  animate: { transition: { staggerChildren: 0.08 } },
+};
+const itemVariants = {
+  initial: { opacity: 0, y: 15 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+};
 
 const StudentDashboard = () => {
   const navigate = useNavigate();
@@ -33,12 +43,12 @@ const StudentDashboard = () => {
   const stripMarkdown = (text) => {
     if (!text) return '';
     const stripped = text
-      .replace(/\*\*(.*?)\*\*/g, '$1')     // bold
-      .replace(/\*(.*?)\*/g, '$1')          // italic
-      .replace(/#{1,6}\s/g, '')             // headings
-      .replace(/={3,}/g, '')                // === dividers
-      .replace(/`{1,3}[^`]*`{1,3}/g, '')    // inline code
-      .replace(/\n+/g, ' ')                 // newlines to space
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/={3,}/g, '')
+      .replace(/`{1,3}[^`]*`{1,3}/g, '')
+      .replace(/\n+/g, ' ')
       .trim();
     return stripped.length > 80 ? stripped.substring(0, 80) + '...' : stripped;
   };
@@ -54,7 +64,7 @@ const StudentDashboard = () => {
           id: cls._id || cls.id,
           name: cls.name,
           teacherName: cls.teacherId?.name || cls.teacherName || 'Instructor',
-          progress: cls.progress || 0, // Populated by /enrolled backend
+          progress: cls.progress || 0,
           type: 'compulsory',
         }));
         setClasses(mappedClasses);
@@ -113,7 +123,7 @@ const StudentDashboard = () => {
     } catch (err) {
       console.error('Join class error:', err);
       let errorMsg = 'Failed to join class';
-      
+
       if (err.response?.status === 403) {
         errorMsg = 'Only students can join classes. Please log in with a student account.';
       } else if (err.response?.status === 404) {
@@ -123,7 +133,7 @@ const StudentDashboard = () => {
       } else if (err.response?.data?.message) {
         errorMsg = err.response.data.message;
       }
-      
+
       setJoinError(errorMsg);
       toast.error(errorMsg);
       throw err;
@@ -139,13 +149,10 @@ const StudentDashboard = () => {
   const startNewSession = (classId) => {
     const status = activeStatuses[classId];
     if (status?.activeSessionId) {
-      // Case 3: Active session exists → resume it
       navigate(`/student/session/${status.activeSessionId}`);
     } else if (status?.planId) {
-      // Case 2: Plan exists but no active session → go pick a topic
       navigate(`/student/plan/${status.planId}`);
     } else {
-      // Case 1: No plan at all → go to class page to generate one first
       navigate(`/student/class/${classId}`);
     }
   };
@@ -193,22 +200,29 @@ const StudentDashboard = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Page Title */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-50 mb-2">Dashboard</h1>
-          <p className="text-slate-400">Welcome back! Continue your learning journey</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-50 mb-2">Dashboard</h1>
+          <p className="text-sm sm:text-base text-slate-400">Welcome back! Continue your learning journey</p>
         </div>
 
         {/* Stats Row */}
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {loadingDashboard ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {[1, 2, 3, 4].map(i => <StatCardSkeleton key={i} />)}
+          </div>
+        ) : stats && (
+          <motion.div
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8"
+            variants={containerVariants}
+            initial="initial"
+            animate="animate"
+          >
             {statCards.map((stat, index) => {
               const Icon = stat.icon;
               return (
                 <motion.div
                   key={index}
                   className="card p-6 text-center hover:bg-slate-700/50 transition-colors"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
+                  variants={itemVariants}
                 >
                   <div className="flex justify-center mb-3">
                     <Icon className="w-8 h-8 text-indigo-400" />
@@ -218,7 +232,7 @@ const StudentDashboard = () => {
                 </motion.div>
               );
             })}
-          </div>
+          </motion.div>
         )}
 
         {/* Continue Learning Banner */}
@@ -230,24 +244,24 @@ const StudentDashboard = () => {
           >
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h3 className="text-lg font-bold text-slate-50 mb-1 flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold text-slate-50 mb-1 flex items-center gap-2">
                   <BookMarked className="w-5 h-5" />
                   {sessions[0].topicName}
                 </h3>
                 <p className="text-sm text-slate-300 mb-2">{stripMarkdown(sessions[0].lastContext)}</p>
                 <p className="text-xs text-slate-400">
-                  {sessions[0].className} • Session {sessions[0].sessionNumber}
+                  {sessions[0].className} &bull; Session {sessions[0].sessionNumber}
                 </p>
               </div>
-              <button
+              <Button
                 onClick={(e) => {
                   e.stopPropagation();
                   resumeSession(sessions[0].id);
                 }}
-                className="btn-primary whitespace-nowrap"
+                className="whitespace-nowrap"
               >
-                Resume →
-              </button>
+                Resume &rarr;
+              </Button>
             </div>
           </motion.div>
         )}
@@ -259,41 +273,41 @@ const StudentDashboard = () => {
             {/* My Classes Section */}
             <section>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-slate-50">My Classes</h2>
-                <button
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-50">My Classes</h2>
+                <Button
                   onClick={() => setJoinModalOpen(true)}
-                  className="btn-primary text-sm flex items-center gap-2"
+                  className="text-sm"
                 >
                   <Plus className="w-4 h-4" />
                   Join Class
-                </button>
+                </Button>
               </div>
 
               {loadingClasses ? (
-                <div className="text-center py-8">
-                  <svg className="w-8 h-8 animate-spin mx-auto text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
+                <div className="grid gap-4">
+                  {[1, 2, 3].map(i => <CardSkeleton key={i} />)}
                 </div>
               ) : classes.length === 0 ? (
-                <div className="card p-8 text-center">
-                  <p className="text-slate-400 mb-4">No classes yet</p>
-                  <button
-                    onClick={() => setJoinModalOpen(true)}
-                    className="btn-primary"
-                  >
+                <div className="card p-8 text-center flex flex-col items-center">
+                  <GraduationCap className="w-12 h-12 text-slate-500 mb-4" />
+                  <h3 className="text-lg font-bold text-slate-300 mb-1">No classes yet</h3>
+                  <p className="text-slate-500 mb-4">Join your first class to start learning</p>
+                  <Button onClick={() => setJoinModalOpen(true)}>
                     Join your first class
-                  </button>
+                  </Button>
                 </div>
               ) : (
-                <div className="grid gap-4">
-                  {classes.map((cls, idx) => (
+                <motion.div
+                  className="grid gap-4"
+                  variants={containerVariants}
+                  initial="initial"
+                  animate="animate"
+                >
+                  {classes.map((cls) => (
                     <motion.div
                       key={cls.id}
                       className="card p-5 hover:bg-slate-700/50 transition-colors"
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.1 }}
+                      variants={itemVariants}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1 cursor-pointer" onClick={() => openClassMaterials(cls.id)}>
@@ -333,39 +347,43 @@ const StudentDashboard = () => {
                         </div>
                       </div>
 
-                      <button
+                      <Button
+                        variant={activeStatuses[cls.id]?.activeSessionId ? 'secondary' : 'primary'}
                         onClick={(e) => {
                           e.stopPropagation();
                           startNewSession(cls.id);
                         }}
-                        className={`text-sm w-full flex items-center justify-center gap-2 ${
-                          activeStatuses[cls.id]?.activeSessionId ? 'btn-secondary text-indigo-400 border-indigo-500/50 hover:bg-indigo-500/10' : 'btn-primary'
+                        className={`text-sm w-full ${
+                          activeStatuses[cls.id]?.activeSessionId ? 'text-indigo-400 border-indigo-500/50 hover:bg-indigo-500/10' : ''
                         }`}
                       >
                         <Play className="w-4 h-4" />
-                        {activeStatuses[cls.id]?.activeSessionId ? 'Resume Session →' : 'Start Study Session'}
-                      </button>
+                        {activeStatuses[cls.id]?.activeSessionId ? 'Resume Session \u2192' : 'Start Study Session'}
+                      </Button>
                     </motion.div>
                   ))}
-                </div>
+                </motion.div>
               )}
             </section>
 
             {/* Weak Areas Section */}
             {weakAreas.length > 0 && (
               <section>
-                <h2 className="text-2xl font-bold text-slate-50 mb-4 flex items-center gap-2">
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-50 mb-4 flex items-center gap-2">
                   <AlertTriangle className="w-6 h-6 text-amber-500" />
                   Weak Areas
                 </h2>
-                <div className="grid gap-4">
+                <motion.div
+                  className="grid gap-4"
+                  variants={containerVariants}
+                  initial="initial"
+                  animate="animate"
+                >
                   {weakAreas.map((area, idx) => (
                     <motion.div
                       key={idx}
                       className="card p-4 border-l-4 border-l-amber-500 bg-slate-800/50 hover:bg-slate-800 transition-colors cursor-pointer"
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.1 }}
+                      variants={itemVariants}
                     >
                       <div className="flex items-center justify-between">
                         <div>
@@ -374,16 +392,16 @@ const StudentDashboard = () => {
                             You found this difficult. Practice to improve!
                           </p>
                         </div>
-                        <button
+                        <Button
                           onClick={() => navigate(`/student/practice/${area.topicId}`)}
-                          className="btn-primary text-sm whitespace-nowrap ml-4"
+                          className="text-sm whitespace-nowrap ml-4"
                         >
-                          Practice →
-                        </button>
+                          Practice &rarr;
+                        </Button>
                       </div>
                     </motion.div>
                   ))}
-                </div>
+                </motion.div>
               </section>
             )}
           </div>
@@ -403,7 +421,7 @@ const StudentDashboard = () => {
                 transition={{ delay: 0.3 }}
               >
                 <p className="text-sm text-green-300">
-                  ✓ Keep it up! You're {Math.round(
+                  Keep it up! You're {Math.round(
                     (roadmap.filter(t => t.status === 'completed').length / roadmap.length) * 100
                   )}% through the course.
                 </p>

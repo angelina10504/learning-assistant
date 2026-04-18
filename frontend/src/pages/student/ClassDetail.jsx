@@ -21,10 +21,20 @@ import toast from 'react-hot-toast';
 import Navbar from '../../components/shared/Navbar';
 import Badge from '../../components/shared/Badge';
 import ProgressBar from '../../components/shared/ProgressBar';
+import { CardSkeleton, StatCardSkeleton } from '../../components/ui/Skeleton';
+import Button from '../../components/ui/Button';
 import classService from '../../services/classService';
 import sessionService from '../../services/sessionService';
 import PreAssessmentModal from '../../components/PreAssessmentModal';
 import FilePreviewModal from '../../components/shared/FilePreviewModal';
+
+const containerVariants = {
+  animate: { transition: { staggerChildren: 0.08 } },
+};
+const itemVariants = {
+  initial: { opacity: 0, y: 15 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+};
 
 const ClassDetail = () => {
   const { id } = useParams();
@@ -124,23 +134,20 @@ const ClassDetail = () => {
     return Math.round((completed / plan.topics.length) * 100);
   };
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900">
         <Navbar />
         <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex justify-center py-16">
-            <div className="inline-block w-10 h-10 border-4 border-indigo-400 border-t-white rounded-full animate-spin" />
+          <div className="space-y-6">
+            <div className="h-5 w-36 bg-slate-700/50 rounded animate-pulse" />
+            <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700/50 space-y-4">
+              <div className="h-8 w-56 bg-slate-700/50 rounded animate-pulse" />
+              <div className="h-4 w-40 bg-slate-700/30 rounded animate-pulse" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[1, 2, 3, 4].map(i => <CardSkeleton key={i} />)}
+            </div>
           </div>
         </main>
       </div>
@@ -158,10 +165,11 @@ const ClassDetail = () => {
           >
             <ArrowLeft size={20} /> Back to Dashboard
           </button>
-          <div className="card p-8 text-center">
-            <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+          <div className="card p-8 text-center flex flex-col items-center">
+            <AlertCircle className="w-12 h-12 text-red-400 mb-4" />
+            <h3 className="text-lg font-bold text-slate-300 mb-1">Something went wrong</h3>
             <p className="text-red-300 mb-4">{error}</p>
-            <button onClick={fetchData} className="btn-primary">Retry</button>
+            <Button onClick={fetchData}>Retry</Button>
           </div>
         </main>
       </div>
@@ -189,7 +197,7 @@ const ClassDetail = () => {
           <div className="card p-6 mb-8">
             <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
               <div className="flex-1">
-                <h1 className="text-3xl font-bold text-slate-50 mb-2">
+                <h1 className="text-2xl sm:text-3xl font-bold text-slate-50 mb-2">
                   {classData?.name || 'Class'}
                 </h1>
                 <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400">
@@ -208,40 +216,32 @@ const ClassDetail = () => {
                   <p className="text-slate-400 text-sm mt-3">{classData.description}</p>
                 )}
               </div>
-              <button
+              <Button
                 onClick={() => handleGeneratePlan()}
                 disabled={generatingPlan || materials.length === 0}
-                className="btn-primary flex items-center gap-2 whitespace-nowrap"
+                loading={generatingPlan}
+                className="whitespace-nowrap"
               >
-                {generatingPlan ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={18} />
-                    Generate Study Plan
-                  </>
-                )}
-              </button>
+                <Sparkles size={18} />
+                Generate Study Plan
+              </Button>
             </div>
           </div>
         </motion.div>
 
         {/* Existing Study Plans */}
         {plans.length > 0 && (
-          <motion.section
-            className="mb-8"
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-          >
+          <section className="mb-8">
             <h2 className="text-xl font-bold text-slate-50 mb-4 flex items-center gap-2">
               <Target size={22} className="text-green-400" />
               Your Study Plans ({plans.length})
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <motion.div
+              className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+              variants={containerVariants}
+              initial="initial"
+              animate="animate"
+            >
               {plans.map((plan) => {
                 const progress = getPlanProgress(plan);
                 return (
@@ -273,29 +273,34 @@ const ClassDetail = () => {
                   </motion.div>
                 );
               })}
-            </div>
-          </motion.section>
+            </motion.div>
+          </section>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column: Materials */}
           <div className="lg:col-span-2">
-            <motion.section variants={containerVariants} initial="hidden" animate="visible">
+            <section>
               <h2 className="text-xl font-bold text-slate-50 mb-4 flex items-center gap-2">
                 <FileText size={22} className="text-indigo-400" />
                 Course Materials ({materials.length})
               </h2>
 
               {materials.length === 0 ? (
-                <motion.div variants={itemVariants} className="card p-8 text-center">
-                  <BookOpen className="w-12 h-12 text-slate-500 mx-auto mb-3" />
-                  <p className="text-slate-400">No materials uploaded yet.</p>
-                  <p className="text-slate-500 text-sm mt-1">
+                <div className="card p-8 text-center flex flex-col items-center">
+                  <BookOpen className="w-12 h-12 text-slate-500 mb-4" />
+                  <h3 className="text-lg font-bold text-slate-300 mb-1">No materials uploaded yet</h3>
+                  <p className="text-slate-500 text-sm">
                     Your teacher will upload study materials here.
                   </p>
-                </motion.div>
+                </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <motion.div
+                  className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+                  variants={containerVariants}
+                  initial="initial"
+                  animate="animate"
+                >
                   {materials.map((material, idx) => (
                     <motion.div
                       key={material._id || idx}
@@ -320,29 +325,35 @@ const ClassDetail = () => {
                       </div>
                     </motion.div>
                   ))}
-                </div>
+                </motion.div>
               )}
-            </motion.section>
+            </section>
           </div>
 
           {/* Right Column: Milestones Timeline */}
           <div className="lg:col-span-1">
-            <motion.section variants={containerVariants} initial="hidden" animate="visible">
+            <section>
               <h2 className="text-xl font-bold text-slate-50 mb-4 flex items-center gap-2">
                 <Calendar size={22} className="text-cyan-400" />
                 Milestones
               </h2>
 
               {milestones.length === 0 ? (
-                <motion.div variants={itemVariants} className="card p-6 text-center">
-                  <Calendar className="w-10 h-10 text-slate-500 mx-auto mb-3" />
-                  <p className="text-slate-400 text-sm">No milestones set yet.</p>
-                </motion.div>
+                <div className="card p-6 text-center flex flex-col items-center">
+                  <Calendar className="w-12 h-12 text-slate-500 mb-3" />
+                  <h3 className="text-base font-bold text-slate-300 mb-1">No milestones set yet</h3>
+                  <p className="text-slate-500 text-sm">Your teacher will add milestones here.</p>
+                </div>
               ) : (
                 <div className="relative">
                   <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-slate-700" />
 
-                  <div className="space-y-4">
+                  <motion.div
+                    className="space-y-4"
+                    variants={containerVariants}
+                    initial="initial"
+                    animate="animate"
+                  >
                     {milestones.map((milestone, idx) => {
                       const { status, color, icon: StatusIcon } = getMilestoneStatus(milestone.deadline);
                       const isPassed = status === 'passed';
@@ -389,32 +400,24 @@ const ClassDetail = () => {
                               )}
                             </div>
                             {!isPassed && materials.length > 0 && (
-                              <button
+                              <Button
+                                variant="ghost"
                                 onClick={() => handleGeneratePlan(milestone.id)}
-                                disabled={preparingMilestone === milestone.id}
-                                className="w-full text-xs py-1.5 px-3 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition-colors flex items-center justify-center gap-1.5"
+                                loading={preparingMilestone === milestone.id}
+                                className="w-full text-xs py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border-indigo-500/30"
                               >
-                                {preparingMilestone === milestone.id ? (
-                                  <>
-                                    <div className="w-3 h-3 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin" />
-                                    Preparing...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Sparkles size={12} />
-                                    Prepare for this
-                                  </>
-                                )}
-                              </button>
+                                <Sparkles size={12} />
+                                Prepare for this
+                              </Button>
                             )}
                           </div>
                         </motion.div>
                       );
                     })}
-                  </div>
+                  </motion.div>
                 </div>
               )}
-            </motion.section>
+            </section>
           </div>
         </div>
       </main>
