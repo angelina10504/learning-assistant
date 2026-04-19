@@ -96,8 +96,9 @@ const TeacherDashboard = () => {
 
   const handleExportAnalytics = async () => {
     try {
-      const csvBlob = await classService.exportCSV('all');
-      const url = window.URL.createObjectURL(csvBlob);
+      const response = await classService.exportCSV('all');
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `analytics-${new Date().toISOString().split('T')[0]}.csv`;

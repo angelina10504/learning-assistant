@@ -767,42 +767,138 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
     }
 })
 
-// POST /api/classes/:id/export-csv - Export class analytics as CSV
+// POST /api/classes/:id/export-csv - Export class analytics as CSV (Power BI flat format)
+// Supports id === 'all' to export across all teacher's classes
 router.post('/:id/export-csv', protect, authorize('teacher'), async (req, res) => {
     try {
-        const classData = await Class.findById(req.params.id)
+        let classIds = []
+        let className = 'all-classes'
 
-        if (!classData) {
-            return res.status(404).json({ message: 'Class not found' })
+        if (req.params.id === 'all') {
+            const classes = await Class.find({ teacherId: req.user._id })
+            classIds = classes.map(c => c._id)
+        } else {
+            const classData = await Class.findById(req.params.id)
+            if (!classData) {
+                return res.status(404).json({ message: 'Class not found' })
+            }
+            if (classData.teacherId.toString() !== req.user._id.toString()) {
+                return res.status(403).json({ message: 'Only class teacher can export analytics' })
+            }
+            classIds = [classData._id]
+            className = classData.name.replace(/[^a-zA-Z0-9]/g, '_')
         }
 
-        if (classData.teacherId.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Only class teacher can export analytics' })
+        // Fetch all data in parallel
+        const [classes, sessions, plans, quizResults] = await Promise.all([
+            Class.find({ _id: { $in: classIds } }).populate('students', 'name email'),
+            StudySession.find({ classId: { $in: classIds } }).populate('studentId', 'name email'),
+            StudyPlan.find({ classId: { $in: classIds } }).populate('studentId', 'name email'),
+            QuizResult.find({ classId: { $in: classIds } }).populate('studentId', 'name email')
+        ])
+
+        const csvRows = []
+
+        // Build one row per student per topic per class
+        for (const cls of classes) {
+            const classIdStr = cls._id.toString()
+            const classPlans = plans.filter(p => p.classId.toString() === classIdStr)
+            const classSessions = sessions.filter(s => s.classId.toString() === classIdStr)
+            const classQuizResults = quizResults.filter(r => r.classId.toString() === classIdStr)
+
+            // Collect all unique topics from plans
+            const topicsSet = new Set()
+            classPlans.forEach(p => p.topics?.forEach(t => topicsSet.add(t.name)))
+            const allTopics = Array.from(topicsSet).sort()
+
+            // For each enrolled student
+            const studentIds = new Set(cls.students.map(s => (s._id || s).toString()))
+            // Also include students from plans who might not be in cls.students
+            classPlans.forEach(p => studentIds.add(p.studentId?._id?.toString() || p.studentId?.toString()))
+
+            for (const studentId of studentIds) {
+                const studentPlan = classPlans.find(p => (p.studentId?._id?.toString() || p.studentId?.toString()) === studentId)
+                const studentSessions = classSessions.filter(s => (s.studentId?._id?.toString() || s.studentId?.toString()) === studentId)
+                const studentName = studentSessions[0]?.studentId?.name || studentPlan?.studentId?.name || cls.students.find(s => (s._id || s).toString() === studentId)?.name || 'Unknown'
+                const studentEmail = studentSessions[0]?.studentId?.email || studentPlan?.studentId?.email || cls.students.find(s => (s._id || s).toString() === studentId)?.email || ''
+
+                for (const topicName of allTopics) {
+                    const planTopic = studentPlan ? studentPlan.topics?.find(t => t.name === topicName) : null
+                    const topicSessions = studentSessions.filter(s => s.topicName === topicName)
+                    const topicQuizResults = classQuizResults.filter(r =>
+                        r.topicName === topicName &&
+                        (r.studentId?._id?.toString() === studentId || r.studentId?.toString() === studentId)
+                    )
+
+                    // Compute mastery score using shared utility
+                    const { totalScore, tier } = computeMasteryScore({
+                        sessions: topicSessions,
+                        quizResults: topicQuizResults,
+                        planTopic
+                    })
+
+                    // Session aggregates
+                    const totalMessages = topicSessions.reduce((sum, s) => sum + (s.messages?.length || 0), 0)
+                    const totalQuestionsAsked = topicSessions.reduce((sum, s) => sum + (s.questionsAsked || 0), 0)
+                    const totalCorrectAnswers = topicSessions.reduce((sum, s) => sum + (s.correctAnswers || 0), 0)
+                    const totalDurationMins = topicSessions.reduce((sum, s) => sum + Math.round(calculateActiveDuration(s) / 60000), 0)
+                    const sessionCount = topicSessions.length
+
+                    // Latest quiz result
+                    const sortedQuiz = [...topicQuizResults].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))
+                    const latestQuiz = sortedQuiz.length > 0 ? sortedQuiz[0] : null
+                    const bestQuizScore = topicQuizResults.length > 0 ? Math.max(...topicQuizResults.map(r => r.score)) : ''
+
+                    // First and last session dates for this topic
+                    const sessionDates = topicSessions.map(s => new Date(s.startedAt)).sort((a, b) => a - b)
+                    const firstSessionDate = sessionDates.length > 0 ? sessionDates[0].toISOString().split('T')[0] : ''
+                    const lastSessionDate = sessionDates.length > 0 ? sessionDates[sessionDates.length - 1].toISOString().split('T')[0] : ''
+
+                    csvRows.push({
+                        className: cls.name,
+                        studentName,
+                        studentEmail,
+                        topicName,
+                        topicOrder: planTopic?.order ?? '',
+                        difficulty: planTopic?.difficulty || '',
+                        priority: planTopic?.priority || '',
+                        priorKnowledge: planTopic?.priorKnowledge || '',
+                        topicStatus: planTopic?.status || 'not_started',
+                        masteryScore: totalScore,
+                        masteryTier: tier,
+                        sessionCount,
+                        totalMessages,
+                        totalDurationMins,
+                        inSessionQuestionsAsked: totalQuestionsAsked,
+                        inSessionCorrectAnswers: totalCorrectAnswers,
+                        inSessionAccuracy: totalQuestionsAsked > 0 ? Math.round((totalCorrectAnswers / totalQuestionsAsked) * 100) : '',
+                        finalQuizScore: latestQuiz?.score ?? '',
+                        finalQuizPassed: latestQuiz?.passed ?? '',
+                        finalQuizAttempts: (planTopic?.quizAttempts ?? topicQuizResults.length) || '',
+                        bestQuizScore,
+                        firstSessionDate,
+                        lastSessionDate,
+                        estimatedMinutes: planTopic?.estimatedMinutes || ''
+                    })
+                }
+            }
         }
 
-        // Get all study sessions
-        const sessions = await StudySession.find({ classId: req.params.id })
-            .populate('studentId', 'name email')
+        // Handle empty data — return headers only so Power BI can still map columns
+        if (csvRows.length === 0) {
+            const headers = 'className,studentName,studentEmail,topicName,topicOrder,difficulty,priority,priorKnowledge,topicStatus,masteryScore,masteryTier,sessionCount,totalMessages,totalDurationMins,inSessionQuestionsAsked,inSessionCorrectAnswers,inSessionAccuracy,finalQuizScore,finalQuizPassed,finalQuizAttempts,bestQuizScore,firstSessionDate,lastSessionDate,estimatedMinutes'
+            res.header('Content-Type', 'text/csv')
+            res.header('Content-Disposition', `attachment; filename="${className}-analytics-${new Date().toISOString().split('T')[0]}.csv"`)
+            return res.send(headers)
+        }
 
-        // Format data for CSV
-        const csvData = sessions.map(session => ({
-            studentName: session.studentId?.name || 'Unknown',
-            studentEmail: session.studentId?.email || 'Unknown',
-            sessionDate: session.startedAt?.toISOString().split('T')[0] || '',
-            questionsAnswered: session.performanceMetrics?.questionsAnswered || 0,
-            correctCount: session.performanceMetrics?.correctCount || 0,
-            avgConfidence: (session.performanceMetrics?.avgConfidence || 0).toFixed(2),
-            weakTopics: session.weakTopics?.map(t => t.topic).join('; ') || '',
-            completedTopics: session.completedTopics?.join('; ') || ''
-        }))
-
-        // Generate CSV
-        const csv = generateCSV(csvData)
+        const csv = generateCSV(csvRows)
 
         res.header('Content-Type', 'text/csv')
-        res.header('Content-Disposition', `attachment; filename="class-analytics-${req.params.id}.csv"`)
+        res.header('Content-Disposition', `attachment; filename="${className}-analytics-${new Date().toISOString().split('T')[0]}.csv"`)
         res.send(csv)
     } catch (error) {
+        console.error('CSV export error:', error)
         res.status(500).json({ message: error.message })
     }
 })
