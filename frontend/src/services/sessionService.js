@@ -77,6 +77,11 @@ const sessionService = {
   submitFinalQuiz: (sessionId, classId, topicName, answers) => {
     return api.post('/sessions/final-quiz/submit', { sessionId, classId, topicName, answers });
   },
+
+  // GET /api/sessions/student-analytics
+  getStudentAnalytics: () => {
+    return api.get('/sessions/student-analytics');
+  },
 };
 
 export default sessionService;

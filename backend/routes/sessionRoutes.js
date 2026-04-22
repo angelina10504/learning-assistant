@@ -132,6 +132,147 @@ router.get('/dashboard', protect, authorize('student'), async (req, res) => {
     }
 })
 
+// GET /api/sessions/student-analytics - Detailed analytics for student
+router.get('/student-analytics', protect, authorize('student'), async (req, res) => {
+    try {
+        const studentId = req.user._id
+
+        // Fetch all data in parallel
+        const [sessions, plans, quizResults] = await Promise.all([
+            StudySession.find({ studentId }).populate('classId', 'name'),
+            StudyPlan.find({ studentId }).populate('classId', 'name'),
+            QuizResult.find({ studentId })
+        ])
+
+        // 1. Per-topic performance data (for bar chart)
+        const topicMap = new Map()
+
+        plans.forEach(plan => {
+            plan.topics.forEach(t => {
+                if (!topicMap.has(t.name)) {
+                    topicMap.set(t.name, {
+                        name: t.name,
+                        status: t.status,
+                        difficulty: t.difficulty,
+                        priority: t.priority,
+                        finalQuizScore: t.finalQuizScore,
+                        quizAttempts: t.quizAttempts || 0,
+                        sessionsCount: 0,
+                        totalMessages: 0,
+                        totalMinutes: 0,
+                        inSessionCorrect: 0,
+                        inSessionTotal: 0,
+                        className: plan.classId?.name || 'Unknown'
+                    })
+                }
+            })
+        })
+
+        sessions.forEach(s => {
+            if (s.topicName && topicMap.has(s.topicName)) {
+                const t = topicMap.get(s.topicName)
+                t.sessionsCount++
+                t.totalMessages += s.messages?.length || 0
+                t.totalMinutes += Math.round(calculateActiveDuration(s) / 60000)
+                t.inSessionCorrect += s.correctAnswers || 0
+                t.inSessionTotal += s.questionsAsked || 0
+            }
+        })
+
+        // Add quiz results
+        quizResults.forEach(r => {
+            if (topicMap.has(r.topicName)) {
+                const t = topicMap.get(r.topicName)
+                // Use the best score
+                if (r.score > (t.finalQuizScore || 0)) {
+                    t.finalQuizScore = r.score
+                }
+            }
+        })
+
+        const topicPerformance = Array.from(topicMap.values())
+
+        // 2. Mastery tier distribution (for donut)
+        const { computeMasteryScore } = require('../utils/masteryScore')
+        const tierCounts = { Mastered: 0, Proficient: 0, Developing: 0, Emerging: 0, 'Not Started': 0 }
+
+        for (const [topicName, topicData] of topicMap) {
+            const topicSessions = sessions.filter(s => s.topicName === topicName)
+            const topicQuizResults = quizResults.filter(r => r.topicName === topicName)
+            const planTopic = plans.flatMap(p => p.topics).find(t => t.name === topicName)
+
+            const { tier } = computeMasteryScore({
+                sessions: topicSessions,
+                quizResults: topicQuizResults,
+                planTopic
+            })
+
+            if (tier === 'mastered') tierCounts.Mastered++
+            else if (tier === 'proficient') tierCounts.Proficient++
+            else if (tier === 'developing') tierCounts.Developing++
+            else if (tier === 'emerging') tierCounts.Emerging++
+            else tierCounts['Not Started']++
+        }
+
+        // 3. Study activity over time (for area chart)
+        const activityMap = new Map()
+        sessions.forEach(s => {
+            if (s.startedAt) {
+                const dateKey = new Date(s.startedAt).toISOString().split('T')[0]
+                if (!activityMap.has(dateKey)) {
+                    activityMap.set(dateKey, { date: dateKey, sessions: 0, minutes: 0, messages: 0 })
+                }
+                const day = activityMap.get(dateKey)
+                day.sessions++
+                day.minutes += Math.round(calculateActiveDuration(s) / 60000)
+                day.messages += s.messages?.length || 0
+            }
+        })
+        const studyActivity = Array.from(activityMap.values()).sort((a, b) => a.date.localeCompare(b.date))
+
+        // 4. Quiz scores over time (for line chart)
+        const quizTimeline = quizResults
+            .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt))
+            .map(r => ({
+                date: new Date(r.completedAt).toISOString().split('T')[0],
+                topic: r.topicName,
+                score: r.score,
+                passed: r.passed,
+                attempt: r.attemptNumber
+            }))
+
+        // 5. Summary stats
+        const totalTopics = topicMap.size
+        const completedTopics = topicPerformance.filter(t => t.status === 'completed').length
+        const totalStudyMinutes = sessions.reduce((sum, s) => sum + Math.round(calculateActiveDuration(s) / 60000), 0)
+        const totalQuizzesTaken = quizResults.length
+        const avgQuizScore = quizResults.length > 0
+            ? Math.round(quizResults.reduce((sum, r) => sum + r.score, 0) / quizResults.length)
+            : 0
+        const bestQuizScore = quizResults.length > 0
+            ? Math.max(...quizResults.map(r => r.score))
+            : 0
+
+        res.json({
+            topicPerformance,
+            tierCounts,
+            studyActivity,
+            quizTimeline,
+            summary: {
+                totalTopics,
+                completedTopics,
+                totalStudyMinutes,
+                totalQuizzesTaken,
+                avgQuizScore,
+                bestQuizScore
+            }
+        })
+    } catch (error) {
+        console.error('Student analytics error:', error)
+        res.status(500).json({ message: error.message })
+    }
+})
+
 // POST /api/sessions/final-quiz - Get or generate final quiz
 router.post('/final-quiz', protect, authorize('student'), async (req, res) => {
     console.log('[final-quiz] received:', req.body)
