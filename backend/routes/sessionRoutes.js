@@ -125,6 +125,7 @@ router.get('/dashboard', protect, authorize('student'), async (req, res) => {
             },
             recentSessions,
             roadmap,
+            planClassId: latestPlan ? latestPlan.classId : null,
             weakAreas: Array.from(weakAreasMap.values()).slice(0, 5) // max 5 weak areas
         })
     } catch (error) {

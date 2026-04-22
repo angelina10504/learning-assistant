@@ -34,6 +34,8 @@ const StudentDashboard = () => {
   });
   const [roadmap, setRoadmap] = useState([]);
   const [weakAreas, setWeakAreas] = useState([]);
+  const [selectedRoadmapClass, setSelectedRoadmapClass] = useState(null);
+  const [roadmapLoading, setRoadmapLoading] = useState(false);
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
@@ -88,6 +90,7 @@ const StudentDashboard = () => {
           if (data.stats) setStats(data.stats);
           if (data.recentSessions) setSessions(data.recentSessions);
           if (data.roadmap) setRoadmap(data.roadmap);
+          if (data.planClassId) setSelectedRoadmapClass(data.planClassId?.toString());
           if (data.weakAreas) setWeakAreas(data.weakAreas);
         }
       } catch (err) {
@@ -123,6 +126,31 @@ const StudentDashboard = () => {
     fetchActiveStatus();
     fetchAnalytics();
   }, []);
+
+  const fetchRoadmapForClass = async (classId) => {
+    if (!classId) return;
+    setRoadmapLoading(true);
+    try {
+      const response = await sessionService.getPlans(classId);
+      const plans = response.data || [];
+      if (plans.length > 0) {
+        const latestPlan = plans[0]; // sorted by generatedAt desc from backend
+        setRoadmap((latestPlan.topics || []).map(t => ({ name: t.name, status: t.status })));
+      } else {
+        setRoadmap([]);
+      }
+    } catch (err) {
+      console.error('Fetch roadmap for class error', err);
+      setRoadmap([]);
+    } finally {
+      setRoadmapLoading(false);
+    }
+  };
+
+  const handleRoadmapClassChange = (classId) => {
+    setSelectedRoadmapClass(classId);
+    fetchRoadmapForClass(classId);
+  };
 
   const handleJoinClass = async (classCode) => {
     setJoiningClass(true);
@@ -426,15 +454,52 @@ const StudentDashboard = () => {
 
           {/* Right Column - Roadmap */}
           <div className="lg:col-span-1">
-            <TopicRoadmap
-              topics={roadmap}
-              title="Study Roadmap"
-              subtitle="Current Course Progress"
-            />
-            {roadmap.filter(t => t.status === 'completed').length > 0 && (
+            {/* Class Selector — only shown when enrolled in 2+ classes */}
+            {classes.length > 1 && (
+              <div className="mb-3">
+                <div className="relative">
+                  <select
+                    value={selectedRoadmapClass || ''}
+                    onChange={(e) => handleRoadmapClassChange(e.target.value)}
+                    className="w-full appearance-none rounded-xl px-4 py-2.5 pr-10 text-sm font-medium text-white/90 cursor-pointer transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+                  >
+                    {classes.map((cls) => (
+                      <option key={cls.id} value={cls.id} style={{ background: '#0f172a', color: '#e2e8f0' }}>
+                        {cls.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <svg className="w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {roadmapLoading ? (
+              <div className="card p-8 text-center">
+                <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                <p className="text-sm text-white/40">Loading roadmap...</p>
+              </div>
+            ) : (
+              <TopicRoadmap
+                topics={roadmap}
+                title="Study Roadmap"
+                subtitle={
+                  classes.length > 1
+                    ? (classes.find(c => c.id === selectedRoadmapClass)?.name || 'Current Course Progress')
+                    : 'Current Course Progress'
+                }
+              />
+            )}
+
+            {!roadmapLoading && roadmap.filter(t => t.status === 'completed').length > 0 && (
               <motion.div
                 className="card p-4 mt-4 border border-green-500/20"
-              style={{ background: 'rgba(34,197,94,0.06)' }}
+                style={{ background: 'rgba(34,197,94,0.06)' }}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
