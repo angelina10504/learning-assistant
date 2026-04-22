@@ -215,6 +215,7 @@ class GeneratePlanRequest(BaseModel):
     milestone_topic: Optional[str] = None
     milestone_deadline: Optional[str] = None  # ISO date string
     assessment_results: Optional[List[AssessmentAnswer]] = None
+    focus_topic: Optional[str] = None  # If set, generate plan for only this topic
 
 
 class PlanTopic(BaseModel):
@@ -374,6 +375,108 @@ When generating topics:
         # Concatenate chunk texts
         all_texts = collection_docs["documents"]
         concatenated_text = "\n\n".join(all_texts)[:6000]
+
+        # ── FOCUSED REVISION PLAN (early return) ────────────────────────────────
+        # If focus_topic is provided, generate a deep-dive plan for just that one
+        # topic and skip the full multi-topic extraction entirely.
+        if request.focus_topic:
+            focus_prompt = f"""Analyze this educational content and create a DETAILED revision plan for ONLY the topic: "{request.focus_topic}".
+{assessment_context}
+
+Content:
+{concatenated_text}
+
+Break this single topic into 3-5 focused subtopic study sessions. Each subtopic should cover a specific aspect of "{request.focus_topic}" in depth.
+
+Return ONLY valid JSON:
+{{
+    "topics": [
+        {{
+            "name": "{request.focus_topic} - [Specific Aspect]",
+            "subtopics": ["detailed sub-concept 1", "detailed sub-concept 2"],
+            "estimatedMinutes": 20,
+            "difficulty": "intermediate",
+            "order": 1,
+            "priority": "high",
+            "priorKnowledge": "partial",
+            "pageRange": []
+        }}
+    ],
+    "totalEstimatedHours": 1.5,
+    "title": "Revision Plan: {request.focus_topic}"
+}}
+
+IMPORTANT:
+- Generate 3-5 subtopic sessions ONLY about "{request.focus_topic}"
+- Do NOT include other unrelated topics
+- Each session name should start with "{request.focus_topic} - " followed by the specific aspect
+- Set all priorities to "high" since this is a revision plan
+- Keep total time realistic (1-2 hours for revision)
+
+Note: pageRange MUST be a list of exactly two INTEGERS representing start and end pages. If unknown, use [].
+"""
+            llm = get_llm()
+            llm_response = llm.invoke(focus_prompt)
+            response_text = llm_response.content.strip()
+            print(f"LLM focused plan response: {response_text[:500]}")
+
+            # Parse JSON — same logic as full plan
+            plan_data = None
+            try:
+                plan_data = json.loads(response_text)
+            except json.JSONDecodeError:
+                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                if json_match:
+                    try:
+                        plan_data = json.loads(json_match.group())
+                    except json.JSONDecodeError:
+                        plan_data = None
+
+            if not plan_data or not plan_data.get("topics"):
+                plan_data = {
+                    "title": f"Revision Plan: {request.focus_topic}",
+                    "totalEstimatedHours": 1.0,
+                    "topics": [
+                        {"name": f"{request.focus_topic} - Core Concepts", "subtopics": ["Review fundamentals"], "estimatedMinutes": 25, "difficulty": "intermediate", "order": 1, "priority": "high", "priorKnowledge": "partial", "pageRange": []},
+                        {"name": f"{request.focus_topic} - Practice", "subtopics": ["Apply concepts"], "estimatedMinutes": 25, "difficulty": "intermediate", "order": 2, "priority": "high", "priorKnowledge": "partial", "pageRange": []},
+                        {"name": f"{request.focus_topic} - Advanced", "subtopics": ["Edge cases", "Applications"], "estimatedMinutes": 20, "difficulty": "advanced", "order": 3, "priority": "high", "priorKnowledge": "partial", "pageRange": []},
+                    ]
+                }
+
+            raw_topics = plan_data.get("topics", [])
+            estimated_hours = plan_data.get("totalEstimatedHours", 0)
+            title = plan_data.get("title", f"Revision Plan: {request.focus_topic}")
+
+            # Build final topics list (same sanitization as the full plan path)
+            final_topics = []
+            for i, t in enumerate(raw_topics):
+                page_range = t.get("pageRange", [])
+                if isinstance(page_range, list):
+                    page_range = [int(p) for p in page_range if isinstance(p, (int, float))]
+                else:
+                    page_range = []
+
+                final_topics.append(PlanTopic(
+                    name=t.get("name", f"Topic {i+1}"),
+                    subtopics=t.get("subtopics", []),
+                    estimatedMinutes=t.get("estimatedMinutes", 25),
+                    difficulty=t.get("difficulty", "intermediate"),
+                    status="current" if i == 0 else "locked",
+                    order=t.get("order", i + 1),
+                    priority=t.get("priority", "high"),
+                    priorKnowledge=t.get("priorKnowledge", "partial"),
+                    pageRange=page_range
+                ))
+
+            total_minutes = sum(t.estimatedMinutes for t in final_topics)
+            total_hours = round(total_minutes / 60, 1) if total_minutes > 0 else estimated_hours
+
+            return GeneratePlanResponse(
+                title=title,
+                topics=final_topics,
+                totalEstimatedHours=total_hours
+            )
+        # ── END FOCUSED REVISION PLAN ────────────────────────────────────────────
 
         # Use LLM directly to extract topics
         llm = get_llm()

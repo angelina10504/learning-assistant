@@ -49,6 +49,7 @@ const ClassDetail = () => {
   const [preparingMilestone, setPreparingMilestone] = useState(null);
   const [showAssessment, setShowAssessment] = useState(false);
   const [activeMilestoneId, setActiveMilestoneId] = useState(null);
+  const [activeMilestoneTopic, setActiveMilestoneTopic] = useState(null);
   const [previewMaterial, setPreviewMaterial] = useState(null);
 
   useEffect(() => {
@@ -98,12 +99,13 @@ const ClassDetail = () => {
     }
   };
 
-  const handleGeneratePlan = (milestoneId = null) => {
+  const handleGeneratePlan = (milestoneId = null, milestoneTopic = null) => {
     if (materials.length === 0) {
       toast.error("No study materials available to generate questions from.");
       return;
     }
     setActiveMilestoneId(milestoneId);
+    setActiveMilestoneTopic(milestoneTopic);
     setShowAssessment(true);
   };
 
@@ -408,7 +410,7 @@ const ClassDetail = () => {
                             {!isPassed && materials.length > 0 && (
                               <Button
                                 variant="ghost"
-                                onClick={() => handleGeneratePlan(milestone.id)}
+                              onClick={() => handleGeneratePlan(milestone.id, milestone.topic)}
                                 loading={preparingMilestone === milestone.id}
                                 className="w-full text-xs py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border-indigo-500/30"
                               >
@@ -434,6 +436,7 @@ const ClassDetail = () => {
         onClose={() => setShowAssessment(false)}
         classId={id}
         milestoneId={activeMilestoneId}
+        milestoneTopic={activeMilestoneTopic}
         onComplete={handleAssessmentComplete}
       />
 

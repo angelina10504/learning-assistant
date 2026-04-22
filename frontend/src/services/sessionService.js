@@ -44,8 +44,8 @@ const sessionService = {
   },
 
   // POST /api/sessions/generate-plan
-  generatePlan: (classId, milestoneId, assessmentResults = null) => {
-    return api.post('/sessions/generate-plan', { classId, milestoneId, assessmentResults });
+  generatePlan: (classId, milestoneId, assessmentResults = null, focusTopic = null) => {
+    return api.post('/sessions/generate-plan', { classId, milestoneId, assessmentResults, focusTopic });
   },
 
   // GET /api/sessions/plans

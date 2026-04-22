@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, AlertCircle, Loader2, Play, ArrowRight, HelpCircle } from 'lucide-react';
 import sessionService from '../services/sessionService';
 
-const PreAssessmentModal = ({ isOpen, onClose, classId, milestoneId, onComplete }) => {
+const PreAssessmentModal = ({ isOpen, onClose, classId, milestoneId, milestoneTopic, onComplete }) => {
   const [stage, setStage] = useState('intro'); // intro, loading_questions, quiz, generating, success
   const [questions, setQuestions] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -57,12 +57,24 @@ const PreAssessmentModal = ({ isOpen, onClose, classId, milestoneId, onComplete 
 
   const processPlanGeneration = async (finalAnswers) => {
     setStage('generating');
-    setGenMessage("Analyzing your responses...");
-    
-    setTimeout(() => setGenMessage("Building your personalized plan..."), 2000);
+
+    // Detect if this is a "Revision: <Topic>" milestone and extract the focus topic
+    let focusTopic = null;
+    if (milestoneTopic && milestoneTopic.startsWith('Revision: ')) {
+      focusTopic = milestoneTopic.replace('Revision: ', '').trim();
+    }
+
+    setGenMessage(focusTopic
+      ? `Building focused revision plan for "${focusTopic}"...`
+      : "Analyzing your responses..."
+    );
+
+    setTimeout(() => setGenMessage(
+      focusTopic ? `Tailoring subtopics for "${focusTopic}"...` : "Building your personalized plan..."
+    ), 2000);
 
     try {
-      const response = await sessionService.generatePlan(classId, milestoneId, finalAnswers);
+      const response = await sessionService.generatePlan(classId, milestoneId, finalAnswers, focusTopic);
       setStage('success');
       setTimeout(() => {
         onComplete(response.data);

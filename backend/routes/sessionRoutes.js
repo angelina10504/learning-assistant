@@ -296,7 +296,7 @@ router.post('/pre-assessment-questions', protect, authorize('student'), async (r
 // POST /api/sessions/generate-plan - Generate AI study plan
 router.post('/generate-plan', protect, authorize('student'), async (req, res) => {
     try {
-        const { classId, milestoneId, assessmentResults } = req.body
+        const { classId, milestoneId, assessmentResults, focusTopic } = req.body
 
         if (!classId) {
             return res.status(400).json({ message: 'Class ID is required' })
@@ -329,7 +329,8 @@ router.post('/generate-plan', protect, authorize('student'), async (req, res) =>
             collection_name: collectionName,
             milestone_topic: milestoneTopic,
             milestone_deadline: milestoneDeadline,
-            assessment_results: assessmentResults
+            assessment_results: assessmentResults,
+            focus_topic: focusTopic || null
         })
 
         const planData = genaiResponse.data
