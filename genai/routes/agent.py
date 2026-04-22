@@ -54,6 +54,7 @@ class AgentChatResponse(BaseModel):
 class PreAssessmentRequest(BaseModel):
     """Request body for pre-assessment questions."""
     collection_name: str
+    focus_topic: Optional[str] = None  # If set, generate questions only about this topic
 
 
 class PreAssessmentQuestion(BaseModel):
@@ -256,24 +257,55 @@ async def pre_assessment_questions(request: PreAssessmentRequest):
                 detail=f"Study material has not been prepared yet. Please ask your teacher to vectorize materials first."
             )
 
-        # Retrieve all chunks for broad coverage
-        collection_docs = vectorstore.get(include=["documents"])
-        if not collection_docs or not collection_docs.get("documents"):
-            raise HTTPException(status_code=400, detail="No study materials found.")
-
-        all_texts = collection_docs["documents"]
-        # Get up to 20 sampled chunks
-        step = max(1, len(all_texts) // 20)
-        sampled_texts = [all_texts[i] for i in range(0, len(all_texts), step)][:20]
-        context = "\n\n".join(sampled_texts)[:8000]
-
         llm = ChatGroq(
             model="llama-3.1-8b-instant",
             api_key=os.getenv("GROQ_API_KEY"),
             temperature=0.4
         )
 
-        prompt = f"""Based on the following course material, generate exactly 5 diagnostic questions to assess a student's prior knowledge.
+        if request.focus_topic:
+            # ── FOCUSED: retrieve only chunks relevant to the specific topic ──
+            retriever = vectorstore.as_retriever(search_kwargs={"k": 12})
+            source_docs = retriever.invoke(request.focus_topic)
+            if not source_docs:
+                raise HTTPException(status_code=400, detail=f"No study material found for topic '{request.focus_topic}'.")
+            context = "\n\n".join([doc.page_content for doc in source_docs])[:8000]
+
+            prompt = f"""Based on the following course material, generate exactly 5 diagnostic questions to assess a student's prior knowledge of ONLY this topic: "{request.focus_topic}".
+
+All 5 questions MUST be about "{request.focus_topic}" and its sub-concepts.
+Do NOT include questions about other unrelated topics.
+For each question provide 4 MCQ options with one correct answer (A, B, C, or D).
+Tag each question's topic field as "{request.focus_topic}" or a specific sub-concept of it.
+
+Content:
+{context}
+
+Return ONLY valid JSON in this format:
+{{
+  "questions": [
+    {{
+      "id": 1,
+      "topic": "{request.focus_topic}",
+      "question": "Question text?",
+      "options": ["A. Choice 1", "B. Choice 2", "C. Choice 3", "D. Choice 4"],
+      "correct": "A",
+      "difficulty": "basic"
+    }}
+  ]
+}}"""
+        else:
+            # ── BROAD: sample chunks across all material ──
+            collection_docs = vectorstore.get(include=["documents"])
+            if not collection_docs or not collection_docs.get("documents"):
+                raise HTTPException(status_code=400, detail="No study materials found.")
+
+            all_texts = collection_docs["documents"]
+            step = max(1, len(all_texts) // 20)
+            sampled_texts = [all_texts[i] for i in range(0, len(all_texts), step)][:20]
+            context = "\n\n".join(sampled_texts)[:8000]
+
+            prompt = f"""Based on the following course material, generate exactly 5 diagnostic questions to assess a student's prior knowledge.
 The questions should cover different key topics from the material.
 For each question provide 4 MCQ options with one correct answer (A, B, C, or D), and tag which topic it tests.
 

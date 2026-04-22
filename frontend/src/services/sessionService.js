@@ -39,8 +39,8 @@ const sessionService = {
   },
 
   // POST /api/sessions/pre-assessment-questions
-  getPreAssessmentQuestions: (classId) => {
-    return api.post('/sessions/pre-assessment-questions', { classId });
+  getPreAssessmentQuestions: (classId, focusTopic = null) => {
+    return api.post('/sessions/pre-assessment-questions', { classId, focusTopic });
   },
 
   // POST /api/sessions/generate-plan

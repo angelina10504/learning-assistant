@@ -4,6 +4,11 @@ import { CheckCircle, AlertCircle, Loader2, Play, ArrowRight, HelpCircle } from 
 import sessionService from '../services/sessionService';
 
 const PreAssessmentModal = ({ isOpen, onClose, classId, milestoneId, milestoneTopic, onComplete }) => {
+  // Derive focusTopic once — used for both questions and plan generation
+  const focusTopic = (milestoneTopic && milestoneTopic.startsWith('Revision: '))
+    ? milestoneTopic.replace('Revision: ', '').trim()
+    : null;
+
   const [stage, setStage] = useState('intro'); // intro, loading_questions, quiz, generating, success
   const [questions, setQuestions] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -25,7 +30,7 @@ const PreAssessmentModal = ({ isOpen, onClose, classId, milestoneId, milestoneTo
   const startAssessment = async () => {
     setStage('loading_questions');
     try {
-      const response = await sessionService.getPreAssessmentQuestions(classId);
+      const response = await sessionService.getPreAssessmentQuestions(classId, focusTopic);
       setQuestions(response.data.questions);
       setStage('quiz');
     } catch (err) {
@@ -57,12 +62,6 @@ const PreAssessmentModal = ({ isOpen, onClose, classId, milestoneId, milestoneTo
 
   const processPlanGeneration = async (finalAnswers) => {
     setStage('generating');
-
-    // Detect if this is a "Revision: <Topic>" milestone and extract the focus topic
-    let focusTopic = null;
-    if (milestoneTopic && milestoneTopic.startsWith('Revision: ')) {
-      focusTopic = milestoneTopic.replace('Revision: ', '').trim();
-    }
 
     setGenMessage(focusTopic
       ? `Building focused revision plan for "${focusTopic}"...`
@@ -115,9 +114,15 @@ const PreAssessmentModal = ({ isOpen, onClose, classId, milestoneId, milestoneTo
               <div className="w-16 h-16 bg-indigo-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
                 <Play className="text-indigo-400 fill-indigo-400" size={32} />
               </div>
-              <h2 className="text-2xl font-bold text-white mb-2">Let's personalize your study plan</h2>
+              <h2 className="text-2xl font-bold text-white mb-2">
+                {focusTopic
+                  ? `Let's check your knowledge of "${focusTopic}"`
+                  : "Let's personalize your study plan"}
+              </h2>
               <p className="text-slate-400 mb-8 max-w-md mx-auto">
-                Answer a few quick questions so we can understand what you already know and where you need focus.
+                {focusTopic
+                  ? `Answer 5 quick questions about "${focusTopic}" so we can build a targeted revision plan.`
+                  : "Answer a few quick questions so we can understand what you already know and where you need focus."}
               </p>
               
               {error && (

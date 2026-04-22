@@ -277,12 +277,13 @@ router.post('/final-quiz/submit', protect, authorize('student'), async (req, res
 // POST /api/sessions/pre-assessment-questions - Get diagnostic questions
 router.post('/pre-assessment-questions', protect, authorize('student'), async (req, res) => {
     try {
-        const { classId } = req.body
+        const { classId, focusTopic } = req.body
         const collectionName = `class_${classId}`
         const genaiUrl = process.env.GENAI_URL || 'http://localhost:8000'
 
         const response = await axios.post(`${genaiUrl}/agent/pre-assessment-questions`, {
-            collection_name: collectionName
+            collection_name: collectionName,
+            focus_topic: focusTopic || null
         })
 
         res.json(response.data)
