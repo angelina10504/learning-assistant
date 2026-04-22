@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Upload, Download, Plus, CheckCircle, Clock, Calendar, FileText, Trash2, Copy, Cpu, LayoutGrid, BarChart3, Users, BookOpen, Flag, AlertCircle, Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from '../../components/shared/Navbar';
@@ -48,13 +48,14 @@ const ClassDetail = () => {
   const [previewMaterial, setPreviewMaterial] = useState(null);
   const [alerts, setAlerts] = useState({ classWide: [], interventions: [], recommendations: [] });
   const [alertsLoading, setAlertsLoading] = useState(false);
+  const [prefillMilestone, setPrefillMilestone] = useState(null);
 
   useEffect(() => {
     fetchData();
   }, [id]);
 
   useEffect(() => {
-    if (activeTab === 'heatmap' && !heatmapData) {
+    if ((activeTab === 'heatmap' || activeTab === 'analytics') && !heatmapData) {
       fetchHeatmapData();
     }
     if (activeTab === 'alerts') {
@@ -164,8 +165,9 @@ const ClassDetail = () => {
 
   const handleExportCSV = async () => {
     try {
-      const csvBlob = await classService.exportCSV(id);
-      const url = window.URL.createObjectURL(csvBlob);
+      const response = await classService.exportCSV(id);
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `${classData?.name || 'class'}-export-${new Date().toISOString().split('T')[0]}.csv`;
@@ -385,6 +387,17 @@ const ClassDetail = () => {
                 {alerts.classWide.length + alerts.interventions.length + alerts.recommendations.length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+              activeTab === 'analytics'
+                ? 'bg-indigo-500 text-white shadow-lg'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]'
+            }`}
+          >
+            <BarChart3 size={18} />
+            Analytics
           </button>
         </div>
 
@@ -786,7 +799,7 @@ const ClassDetail = () => {
               )}
             </motion.div>
           </div>
-        ) : (
+        ) : activeTab === 'alerts' ? (
           /* Alerts View */
           <div className="space-y-6">
             {alertsLoading ? (
@@ -830,17 +843,33 @@ const ClassDetail = () => {
                           <div>
                             <h4 className="font-bold text-slate-50 text-sm">Action Required</h4>
                             <p className="text-slate-400 text-sm mt-0.5">
-                              <span className="text-red-400 font-medium">{alert.affectedCount} students</span> are struggling with
-                              <span className="text-slate-200 font-semibold italic"> "{alert.topicName}"</span> &mdash; consider revisiting in your next lecture.
+                              <span className="text-red-400 font-medium">{alert.percentage}% of class</span> ({alert.affectedCount}/{alert.totalStudents} students) are struggling with
+                              <span className="text-slate-200 font-semibold italic"> "{alert.topicName}"</span>
                             </p>
+                            {alert.strugglingStudentNames && alert.strugglingStudentNames.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-2">
+                                {alert.strugglingStudentNames.map((name, idx) => (
+                                  <span key={idx} className="text-xs px-2 py-0.5 rounded-full bg-red-500/10 text-red-300 border border-red-500/20">
+                                    {name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <Button
                           variant="secondary"
-                          onClick={() => toast.success("Noted! You can address this in your next class.")}
-                          className="text-xs px-3 py-1.5 whitespace-nowrap"
+                          onClick={() => {
+                            setPrefillMilestone({
+                              topic: `Revision: ${alert.topicName}`,
+                              deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                              isCompulsory: true
+                            });
+                            setShowMilestoneModal(true);
+                          }}
+                          className="text-xs px-3 py-1.5 whitespace-nowrap flex items-center"
                         >
-                          Schedule Revision
+                          <Calendar size={14} className="mr-1" /> Schedule Revision Session
                         </Button>
                       </motion.div>
                     ))}
@@ -864,18 +893,33 @@ const ClassDetail = () => {
                                 Has not started <span className="text-slate-200">"{alert.milestoneName}"</span>.
                                 Deadline is in <span className="text-amber-400 font-medium">{alert.daysUntilDeadline} days</span>.
                               </p>
+                              <div className="mt-2">
+                                {alert.lastSessionDate ? (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                    Last active: {Math.round((Date.now() - new Date(alert.lastSessionDate).getTime()) / (1000 * 60 * 60 * 24))}d ago
+                                  </span>
+                                ) : (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/10 text-red-300 border border-red-500/20">
+                                    Never started
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
-                          <div className="flex items-center justify-between gap-2 mt-2 pt-4 border-t border-slate-700/30">
-                            <span className="text-[10px] text-slate-500 italic">
-                              Last session: {alert.lastSessionDate ? new Date(alert.lastSessionDate).toLocaleDateString() : 'Never'}
-                            </span>
+                          <div className="flex items-center justify-end gap-2 mt-2 pt-4 border-t border-slate-700/30">
                             <Button
                               variant="secondary"
-                              onClick={() => toast.success(`Reminder noted for ${alert.studentName}.`)}
-                              className="text-xs px-2 py-1"
+                              onClick={() => {
+                                setPrefillMilestone({
+                                  topic: `${alert.milestoneName} — reminder for ${alert.studentName}`,
+                                  deadline: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                                  isCompulsory: false
+                                });
+                                setShowMilestoneModal(true);
+                              }}
+                              className="text-xs px-2 py-1 flex items-center"
                             >
-                              Send Reminder
+                              <Plus size={14} className="mr-1" /> Create Milestone
                             </Button>
                           </div>
                         </motion.div>
@@ -921,6 +965,282 @@ const ClassDetail = () => {
               </motion.div>
             )}
           </div>
+        ) : (
+          /* Analytics Tab */
+          <div className="space-y-8">
+            {/* Row 1: Summary Stat Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {[
+                { label: 'Total Students', value: students.length, color: '#818cf8' },
+                { label: 'Avg Progress', value: `${students.length > 0 ? Math.round(students.reduce((s, st) => s + (st.progress || 0), 0) / students.length) : 0}%`, color: '#22d3ee' },
+                { label: 'Avg Confidence', value: `${students.length > 0 ? Math.round(students.reduce((s, st) => s + (st.confidence || 0), 0) / students.length) : 0}%`, color: '#a78bfa' },
+                { label: 'Total Sessions', value: students.reduce((s, st) => s + (st.sessionCount || 0), 0), color: '#34d399' },
+              ].map((stat, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                  className="card p-5"
+                >
+                  <p className="text-white/50 text-xs uppercase tracking-wider mb-2">{stat.label}</p>
+                  <p className="text-3xl font-bold text-white">{stat.value}</p>
+                  <div className="mt-3 h-1 rounded-full bg-white/[0.06]">
+                    <div className="h-full rounded-full" style={{ width: '60%', background: stat.color }} />
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Row 2: Mastery Donut + Topic Bar */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Chart 1: Mastery Distribution Donut */}
+              <motion.div
+                className="card p-6"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+              >
+                <h3 className="text-lg font-bold text-white mb-6">Mastery Distribution</h3>
+                {heatmapData ? (() => {
+                  const counts = { Mastered: 0, Proficient: 0, Developing: 0, Emerging: 0 };
+                  heatmapData.students.forEach(s => {
+                    heatmapData.topics.forEach(t => {
+                      const tier = s.mastery[t];
+                      if (tier === 'mastered') counts.Mastered++;
+                      else if (tier === 'proficient') counts.Proficient++;
+                      else if (tier === 'developing') counts.Developing++;
+                      else if (tier === 'emerging') counts.Emerging++;
+                    });
+                  });
+                  const pieData = Object.entries(counts)
+                    .filter(([, v]) => v > 0)
+                    .map(([name, value]) => ({ name, value }));
+                  const COLORS = { Mastered: '#34d399', Proficient: '#818cf8', Developing: '#60a5fa', Emerging: '#fbbf24' };
+                  const total = pieData.reduce((s, d) => s + d.value, 0);
+                  return pieData.length > 0 ? (
+                    <div className="flex items-center justify-center gap-8">
+                      <ResponsiveContainer width={200} height={200}>
+                        <PieChart>
+                          <Pie
+                            data={pieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={55}
+                            outerRadius={85}
+                            paddingAngle={3}
+                            dataKey="value"
+                            stroke="none"
+                          >
+                            {pieData.map((entry) => (
+                              <Cell key={entry.name} fill={COLORS[entry.name]} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', backdropFilter: 'blur(12px)' }}
+                            itemStyle={{ color: '#f1f5f9' }}
+                            formatter={(value) => [`${value} (${Math.round(value / total * 100)}%)`, '']}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="space-y-3">
+                        {pieData.map(d => (
+                          <div key={d.name} className="flex items-center gap-3">
+                            <div className="w-3 h-3 rounded-full" style={{ background: COLORS[d.name] }} />
+                            <span className="text-sm text-white/70">{d.name}</span>
+                            <span className="text-sm font-bold text-white ml-auto">{d.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-white/40 text-center py-8">No mastery data yet</p>
+                  );
+                })() : (
+                  <p className="text-white/40 text-center py-8">Loading mastery data...</p>
+                )}
+              </motion.div>
+
+              {/* Chart 2: Topic-wise Confidence Horizontal Bar */}
+              <motion.div
+                className="card p-6"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+              >
+                <h3 className="text-lg font-bold text-white mb-6">Topic-wise Confidence</h3>
+                {topicProgressData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={topicProgressData} layout="vertical" margin={{ left: 20 }}>
+                      <defs>
+                        <linearGradient id="barGrad" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#6366f1" />
+                          <stop offset="100%" stopColor="#22d3ee" />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                      <XAxis type="number" domain={[0, 100]} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} />
+                      <YAxis type="category" dataKey="topic" width={100} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} tick={{ fill: 'rgba(255,255,255,0.6)' }} />
+                      <Tooltip
+                        contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px' }}
+                        itemStyle={{ color: '#f1f5f9' }}
+                        formatter={(value) => [`${value}%`, 'Confidence']}
+                      />
+                      <Bar dataKey="confidence" fill="url(#barGrad)" radius={[0, 6, 6, 0]} barSize={20} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-white/40 text-center py-8">No topic data yet</p>
+                )}
+              </motion.div>
+            </div>
+
+            {/* Row 3: Progress Histogram + Engagement Scatter */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Chart 3: Student Progress Distribution */}
+              <motion.div
+                className="card p-6"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+              >
+                <h3 className="text-lg font-bold text-white mb-6">Student Progress Distribution</h3>
+                {students.length > 0 ? (() => {
+                  const buckets = [
+                    { range: '0-25%', count: 0, color: '#f87171' },
+                    { range: '26-50%', count: 0, color: '#fbbf24' },
+                    { range: '51-75%', count: 0, color: '#60a5fa' },
+                    { range: '76-100%', count: 0, color: '#34d399' },
+                  ];
+                  students.forEach(s => {
+                    const p = s.progress || 0;
+                    if (p <= 25) buckets[0].count++;
+                    else if (p <= 50) buckets[1].count++;
+                    else if (p <= 75) buckets[2].count++;
+                    else buckets[3].count++;
+                  });
+                  return (
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={buckets}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                        <XAxis dataKey="range" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
+                        <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} allowDecimals={false} />
+                        <Tooltip
+                          contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px' }}
+                          itemStyle={{ color: '#f1f5f9' }}
+                        />
+                        <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={40}>
+                          {buckets.map((b, i) => (
+                            <Cell key={i} fill={b.color} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  );
+                })() : (
+                  <p className="text-white/40 text-center py-8">No student data yet</p>
+                )}
+              </motion.div>
+
+              {/* Chart 4: Engagement vs Progress Scatter */}
+              <motion.div
+                className="card p-6"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+              >
+                <h3 className="text-lg font-bold text-white mb-6">Engagement vs Progress</h3>
+                {students.filter(s => s.sessionCount > 0).length > 0 ? (
+                  <ResponsiveContainer width="100%" height={250}>
+                    <ScatterChart margin={{ bottom: 10 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                      <XAxis type="number" dataKey="sessionCount" name="Sessions" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} label={{ value: 'Sessions', position: 'insideBottom', offset: -5, fill: 'rgba(255,255,255,0.4)', fontSize: 11 }} />
+                      <YAxis type="number" dataKey="progress" name="Progress" domain={[0, 100]} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} label={{ value: 'Progress %', angle: -90, position: 'insideLeft', fill: 'rgba(255,255,255,0.4)', fontSize: 11 }} />
+                      <Tooltip
+                        cursor={{ strokeDasharray: '3 3', stroke: 'rgba(255,255,255,0.1)' }}
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="border border-white/[0.08] rounded-xl p-3" style={{ background: 'rgba(15,23,42,0.95)', backdropFilter: 'blur(12px)' }}>
+                                <p className="text-white text-sm font-bold">{data.name}</p>
+                                <p className="text-white/60 text-xs">{data.sessionCount} sessions &bull; {data.progress}% progress</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Scatter data={students.filter(s => s.sessionCount > 0)} fillOpacity={0.8}>
+                        {students.filter(s => s.sessionCount > 0).map((s, i) => (
+                          <Cell key={i} fill={(s.progress || 0) >= 75 ? '#34d399' : (s.progress || 0) >= 50 ? '#60a5fa' : (s.progress || 0) >= 25 ? '#fbbf24' : '#f87171'} />
+                        ))}
+                      </Scatter>
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-white/40 text-center py-8">No session data yet</p>
+                )}
+              </motion.div>
+            </div>
+
+            {/* Row 4: Student Leaderboard Table */}
+            <motion.div
+              className="card p-6"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+            >
+              <h3 className="text-lg font-bold text-white mb-6">Student Leaderboard</h3>
+              {students.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/[0.06]">
+                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">#</th>
+                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Student</th>
+                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Progress</th>
+                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Confidence</th>
+                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Sessions</th>
+                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Topics Done</th>
+                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...students].sort((a, b) => (b.progress || 0) - (a.progress || 0)).map((student, idx) => (
+                        <tr key={student.id || idx} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+                          <td className="py-3 px-4 text-white/40 font-mono text-xs">{idx + 1}</td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-xs font-bold">{student.name?.charAt(0)}</div>
+                              <div>
+                                <p className="text-white text-sm font-medium">{student.name}</p>
+                                <p className="text-white/30 text-xs">{student.email}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <div className="w-16 h-1.5 rounded-full bg-white/[0.06]">
+                                <div className="h-full rounded-full" style={{ width: `${student.progress || 0}%`, background: (student.progress || 0) >= 75 ? '#34d399' : (student.progress || 0) >= 50 ? '#60a5fa' : (student.progress || 0) >= 25 ? '#fbbf24' : '#f87171' }} />
+                              </div>
+                              <span className="text-white text-sm font-medium">{Math.round(student.progress || 0)}%</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-white/80 text-sm">{Math.round(student.confidence || 0)}%</td>
+                          <td className="py-3 px-4 text-white/80 text-sm">{student.sessionCount || 0}</td>
+                          <td className="py-3 px-4 text-white/80 text-sm">{student.topicsCompleted || 0}</td>
+                          <td className="py-3 px-4 text-white/80 text-sm">{student.timeStudied || 0}h</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-white/40 text-center py-8">No students enrolled yet</p>
+              )}
+            </motion.div>
+          </div>
         )}
       </main>
       </div>
@@ -935,9 +1255,16 @@ const ClassDetail = () => {
 
       <AddMilestoneModal
         isOpen={showMilestoneModal}
-        onClose={() => setShowMilestoneModal(false)}
+        onClose={() => {
+          setShowMilestoneModal(false);
+          setPrefillMilestone(null);
+        }}
         classId={id}
-        onAdded={handleMilestoneAdded}
+        onAdded={() => {
+          handleMilestoneAdded();
+          setPrefillMilestone(null);
+        }}
+        prefill={prefillMilestone}
       />
 
       <EditMilestoneModal

@@ -1241,11 +1241,18 @@ router.get('/:id/alerts', protect, authorize('teacher'), async (req, res) => {
 
             const affectedRatio = strugglingStudents.size / totalStudents
             if (affectedRatio > 0.40) {
+                // Collect the struggling student names
+                const strugglingStudentNames = Array.from(strugglingStudents).map(sId => {
+                    const student = classData.students.find(s => s._id.toString() === sId)
+                    return student ? student.name : null
+                }).filter(Boolean)
+
                 classWide.push({
                     topicName,
                     affectedCount: strugglingStudents.size,
                     totalStudents,
-                    percentage: Math.round(affectedRatio * 100)
+                    percentage: Math.round(affectedRatio * 100),
+                    strugglingStudentNames
                 })
             }
         })

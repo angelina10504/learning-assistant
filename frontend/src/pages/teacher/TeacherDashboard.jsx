@@ -131,6 +131,27 @@ const TeacherDashboard = () => {
       : 0;
   const weakTopics = analytics?.weakTopics || [];
 
+  const TruncatedTick = ({ x, y, payload }) => {
+    const maxLen = 10;
+    const raw = payload.value || '';
+    const label = raw.length > maxLen ? raw.slice(0, maxLen) + '…' : raw;
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text
+          x={0}
+          y={0}
+          dy={4}
+          textAnchor="end"
+          fill="rgba(255,255,255,0.5)"
+          fontSize={11}
+          transform="rotate(-35)"
+        >
+          {label}
+        </text>
+      </g>
+    );
+  };
+
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
@@ -452,10 +473,10 @@ const TeacherDashboard = () => {
                         transition={{ duration: 0.5, delay: 0.3 + (idx * 0.1) }}
                     >
                         <h2 className="text-xl font-bold text-slate-50 mb-6">{cls.name} Completion Rates</h2>
-                        <ResponsiveContainer width="100%" height={300}>
-                            <BarChart data={cls.studentProgresses}>
+                        <ResponsiveContainer width="100%" height={340}>
+                            <BarChart data={cls.studentProgresses} margin={{ bottom: 30 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                                <XAxis dataKey="name" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
+                                <XAxis dataKey="name" stroke="rgba(255,255,255,0.3)" tick={<TruncatedTick />} interval={0} />
                                 <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} domain={[0, 100]} />
                                 <Tooltip content={<CustomTooltip />} />
                                 <defs>

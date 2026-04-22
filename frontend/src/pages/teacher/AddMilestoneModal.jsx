@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Calendar, Target, Save, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import classService from '../../services/classService';
 
-const AddMilestoneModal = ({ isOpen, onClose, classId, onAdded }) => {
+const AddMilestoneModal = ({ isOpen, onClose, classId, onAdded, prefill = null }) => {
   const [formData, setFormData] = useState({
     topic: '',
     deadline: '',
@@ -13,6 +13,23 @@ const AddMilestoneModal = ({ isOpen, onClose, classId, onAdded }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+
+  // Apply prefill values when the modal opens with prefill data, reset when closed
+  useEffect(() => {
+    if (prefill && isOpen) {
+      setFormData(prev => ({
+        ...prev,
+        topic: prefill.topic || '',
+        deadline: prefill.deadline || '',
+        isCompulsory: prefill.isCompulsory ?? true,
+      }));
+    }
+    if (!isOpen) {
+      setFormData({ topic: '', deadline: '', isCompulsory: true });
+      setError(null);
+      setSuccess(false);
+    }
+  }, [prefill, isOpen]);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
