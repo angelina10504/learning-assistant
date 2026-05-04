@@ -72,10 +72,6 @@ const StudyPlanView = () => {
   };
 
   const handleStartTopic = async (topic, index) => {
-    if (topic.status === 'pending') {
-      toast.error('Complete the previous topic first!');
-      return;
-    }
     if (topic.status === 'completed') {
       toast.error('This topic is already completed. You can review it by starting a new session.');
     }

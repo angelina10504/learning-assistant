@@ -532,15 +532,49 @@ router.post('/generate-plan', protect, authorize('student'), async (req, res) =>
         const collectionName = `class_${classId}`
         const genaiUrl = process.env.GENAI_URL || 'http://localhost:8000'
 
+        // ── CANONICAL TOPIC LOCK ──────────────────────────────────────────────────
+        // If the class already has canonical topics (set when the FIRST student
+        // generated a plan), pass them to GenAI so it only personalises each topic
+        // (priority / priorKnowledge / estimatedMinutes) without re-inventing names.
+        // This keeps ALL students' topic lists identical for the teacher heatmap.
+        const hasCanonical = classData.canonicalTopics && classData.canonicalTopics.length > 0
+        const canonicalPayload = hasCanonical
+            ? classData.canonicalTopics.map(t => ({
+                name: t.name,
+                order: t.order,
+                estimatedMinutes: t.estimatedMinutes,
+                difficulty: t.difficulty,
+                subtopics: t.subtopics || [],
+                pageRange: t.pageRange || []
+            }))
+            : null
+
+        console.log(`[generate-plan] class ${classId} — canonical topics: ${hasCanonical ? canonicalPayload.length : 'none (first student)'}`)
+
         const genaiResponse = await axios.post(`${genaiUrl}/agent/generate-plan`, {
             collection_name: collectionName,
             milestone_topic: milestoneTopic,
             milestone_deadline: milestoneDeadline,
             assessment_results: assessmentResults,
-            focus_topic: focusTopic || null
+            focus_topic: focusTopic || null,
+            canonical_topics: canonicalPayload  // null = full extraction; array = personalise only
         })
 
         const planData = genaiResponse.data
+
+        // ── SAVE CANONICAL TOPICS (first student only) ────────────────────────────
+        if (!hasCanonical && !focusTopic && planData.topics && planData.topics.length > 0) {
+            classData.canonicalTopics = planData.topics.map((t, i) => ({
+                name: t.name,
+                order: t.order || i + 1,
+                estimatedMinutes: t.estimatedMinutes || 30,
+                difficulty: t.difficulty || 'intermediate',
+                subtopics: t.subtopics || [],
+                pageRange: t.pageRange || []
+            }))
+            await classData.save()
+            console.log(`[generate-plan] Saved ${classData.canonicalTopics.length} canonical topics for class ${classId}`)
+        }
 
         // Create StudyPlan in DB
         const plan = await StudyPlan.create({

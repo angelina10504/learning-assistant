@@ -217,6 +217,7 @@ class GeneratePlanRequest(BaseModel):
     milestone_deadline: Optional[str] = None  # ISO date string
     assessment_results: Optional[List[AssessmentAnswer]] = None
     focus_topic: Optional[str] = None  # If set, generate plan for only this topic
+    canonical_topics: Optional[List[Dict[str, Any]]] = None  # Fixed topic list from class — skip AI extraction
 
 
 class PlanTopic(BaseModel):
@@ -509,6 +510,64 @@ Note: pageRange MUST be a list of exactly two INTEGERS representing start and en
                 totalEstimatedHours=total_hours
             )
         # ── END FOCUSED REVISION PLAN ────────────────────────────────────────────
+
+        # ── CANONICAL TOPICS MODE (skip AI extraction) ───────────────────────────
+        # When the class already has a canonical topic list, we reuse those exact
+        # topic names and only run personalization via the assessment results.
+        if request.canonical_topics:
+            canonical = request.canonical_topics  # list of {name, estimatedMinutes, difficulty, subtopics, pageRange, order}
+
+            plan_topics = []
+            total_minutes = 0
+            for i, ct in enumerate(canonical):
+                topic_name = ct.get("name", f"Topic {i+1}")
+                est_min = ct.get("estimatedMinutes", 30)
+                difficulty = ct.get("difficulty", "intermediate")
+                subtopics = ct.get("subtopics", [])
+                page_range = ct.get("pageRange", [])
+
+                # Personalize priority / priorKnowledge from assessment
+                priority = "medium"
+                prior_knowledge = "partial"
+                if request.assessment_results:
+                    topic_lower = topic_name.lower()
+                    for res in request.assessment_results:
+                        res_lower = res.topic.lower()
+                        if topic_lower in res_lower or res_lower in topic_lower:
+                            if res.correct:
+                                priority = "low"
+                                prior_knowledge = "strong"
+                                est_min = max(15, int(est_min * 0.7))  # reduce time for known topics
+                            elif res.skipped:
+                                priority = "medium"
+                                prior_knowledge = "partial"
+                            else:
+                                priority = "high"
+                                prior_knowledge = "none"
+                                est_min = int(est_min * 1.2)  # more time for weak topics
+                            break
+
+                plan_topics.append(PlanTopic(
+                    name=topic_name,
+                    subtopics=subtopics,
+                    estimatedMinutes=est_min,
+                    difficulty=difficulty,
+                    status="current" if i == 0 else "locked",
+                    order=i + 1,
+                    priority=priority,
+                    priorKnowledge=prior_knowledge,
+                    pageRange=[int(p) for p in page_range if isinstance(p, (int, float))]
+                ))
+                total_minutes += est_min
+
+            total_hours = round(total_minutes / 60, 1)
+            title_subject = canonical[0].get("name", "Subject").split(" - ")[0] if canonical else "Subject"
+            return GeneratePlanResponse(
+                title=f"Study Plan: {request.milestone_topic or title_subject}",
+                topics=plan_topics,
+                totalEstimatedHours=total_hours
+            )
+        # ── END CANONICAL TOPICS MODE ─────────────────────────────────────────────
 
         # Use LLM directly to extract topics
         llm = get_llm()

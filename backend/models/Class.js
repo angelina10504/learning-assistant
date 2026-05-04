@@ -50,6 +50,16 @@ const classSchema = new mongoose.Schema({
         ref: 'Document'
     }],
     milestones: [milestoneSchema],
+    // Canonical topic list fixed on first plan generation for this class.
+    // All students' plans use the same topic names so the teacher heatmap stays aligned.
+    canonicalTopics: [{
+        name: { type: String, required: true },
+        order: { type: Number },
+        estimatedMinutes: { type: Number, default: 30 },
+        difficulty: { type: String, default: 'intermediate' },
+        subtopics: [String],
+        pageRange: [Number]
+    }],
     createdAt: {
         type: Date,
         default: Date.now

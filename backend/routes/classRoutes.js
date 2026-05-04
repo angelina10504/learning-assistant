@@ -1019,6 +1019,23 @@ router.delete('/:id', protect, authorize('teacher'), async (req, res) => {
     }
 })
 
+// DELETE /api/classes/:id/canonical-topics - Teacher resets canonical topic list
+// Use this when new material is uploaded and you want topics re-extracted from scratch.
+router.delete('/:id/canonical-topics', protect, authorize('teacher'), async (req, res) => {
+    try {
+        const classData = await Class.findById(req.params.id)
+        if (!classData) return res.status(404).json({ message: 'Class not found' })
+        if (classData.teacherId.toString() !== req.user._id.toString())
+            return res.status(403).json({ message: 'Only class teacher can reset topics' })
+
+        classData.canonicalTopics = []
+        await classData.save()
+        res.json({ message: 'Canonical topics cleared. Next plan generation will extract fresh topics.' })
+    } catch (error) {
+        res.status(500).json({ message: error.message })
+    }
+})
+
 // POST /api/classes/:id/milestones - Add milestone to class
 router.post('/:id/milestones', protect, authorize('teacher'), async (req, res) => {
     try {
