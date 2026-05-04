@@ -13,8 +13,10 @@ import Button from '../../components/ui/Button';
 import classService from '../../services/classService';
 import UploadMaterialModal from './UploadMaterialModal';
 import AddMilestoneModal from './AddMilestoneModal';
+import AddToCalendarButton from '../../components/ui/AddToCalendarButton';
 import EditMilestoneModal from './EditMilestoneModal';
 import FilePreviewModal from '../../components/shared/FilePreviewModal';
+import GlassTooltip from '../../components/ui/GlassTooltip';
 
 const containerVariants = {
   animate: { transition: { staggerChildren: 0.08 } },
@@ -244,20 +246,6 @@ const ClassDetail = () => {
       ? [...students].sort((a, b) => (b.progress || 0) - (a.progress || 0))
       : [...students];
 
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div
-          className="border border-white/[0.08] rounded-xl p-3 shadow-lg"
-          style={{ background: 'rgba(15,23,42,0.95)', backdropFilter: 'blur(12px)' }}
-        >
-          <p className="text-slate-300 text-sm font-medium">{payload[0].payload.topic}</p>
-          <p className="text-indigo-400 text-sm font-bold">{payload[0].value}%</p>
-        </div>
-      );
-    }
-    return null;
-  };
 
   if (loading) {
     return (
@@ -528,7 +516,7 @@ const ClassDetail = () => {
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                     <XAxis dataKey="topic" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
                     <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip content={<GlassTooltip />} />
                     <Area
                       type="monotone"
                       dataKey="confidence"
@@ -857,20 +845,27 @@ const ClassDetail = () => {
                             )}
                           </div>
                         </div>
-                        <Button
-                          variant="secondary"
-                          onClick={() => {
-                            setPrefillMilestone({
-                              topic: `Revision: ${alert.topicName}`,
-                              deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                              isCompulsory: true
-                            });
-                            setShowMilestoneModal(true);
-                          }}
-                          className="text-xs px-3 py-1.5 whitespace-nowrap flex items-center"
-                        >
-                          <Calendar size={14} className="mr-1" /> Schedule Revision Session
-                        </Button>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <Button
+                            variant="secondary"
+                            onClick={() => {
+                              setPrefillMilestone({
+                                topic: `Revision: ${alert.topicName}`,
+                                deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                                isCompulsory: true
+                              });
+                              setShowMilestoneModal(true);
+                            }}
+                            className="text-xs px-3 py-1.5 whitespace-nowrap flex items-center"
+                          >
+                            <Calendar size={14} className="mr-1" /> Schedule Revision
+                          </Button>
+                          <AddToCalendarButton
+                            title={`Revision: ${alert.topicName}`}
+                            description={`${alert.percentage}% of the class (${alert.affectedCount} students) are struggling with "${alert.topicName}". Schedule a revision session to address this.`}
+                            startDate={new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)}
+                          />
+                        </div>
                       </motion.div>
                     ))}
                   </section>
@@ -921,6 +916,11 @@ const ClassDetail = () => {
                             >
                               <Plus size={14} className="mr-1" /> Create Milestone
                             </Button>
+                            <AddToCalendarButton
+                              title={`Follow up: ${alert.studentName} — ${alert.milestoneName}`}
+                              description={`${alert.studentName} has not started "${alert.milestoneName}". Deadline is in ${alert.daysUntilDeadline} days. Follow up required.`}
+                              startDate={new Date(Date.now() + 1 * 24 * 60 * 60 * 1000)}
+                            />
                           </div>
                         </motion.div>
                       ))}
@@ -1081,11 +1081,7 @@ const ClassDetail = () => {
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
                       <XAxis type="number" domain={[0, 100]} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} />
                       <YAxis type="category" dataKey="topic" width={100} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} tick={{ fill: 'rgba(255,255,255,0.6)' }} />
-                      <Tooltip
-                        contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px' }}
-                        itemStyle={{ color: '#f1f5f9' }}
-                        formatter={(value) => [`${value}%`, 'Confidence']}
-                      />
+                      <Tooltip content={<GlassTooltip />} formatter={(value) => [`${value}%`, 'Confidence']} />
                       <Bar dataKey="confidence" fill="url(#barGrad)" radius={[0, 6, 6, 0]} barSize={20} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -1125,10 +1121,7 @@ const ClassDetail = () => {
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                         <XAxis dataKey="range" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
                         <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} allowDecimals={false} />
-                        <Tooltip
-                          contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px' }}
-                          itemStyle={{ color: '#f1f5f9' }}
-                        />
+                        <Tooltip content={<GlassTooltip />} />
                         <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={40}>
                           {buckets.map((b, i) => (
                             <Cell key={i} fill={b.color} />

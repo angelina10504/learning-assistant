@@ -115,6 +115,22 @@ router.get('/dashboard', protect, authorize('student'), async (req, res) => {
             })
         }
 
+        // 7-day activity trend for sparklines
+        const last7Days = [];
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            const dayStr = date.toISOString().split('T')[0];
+            const daySessions = allSessions.filter(s => 
+                s.startedAt && new Date(s.startedAt).toISOString().split('T')[0] === dayStr
+            );
+            last7Days.push({
+                date: dayStr,
+                sessions: daySessions.length,
+                minutes: Math.round(daySessions.reduce((sum, s) => sum + calculateActiveDuration(s), 0) / 60000),
+            });
+        }
+
         // Return compiled data
         res.json({
             stats: {
@@ -126,7 +142,8 @@ router.get('/dashboard', protect, authorize('student'), async (req, res) => {
             recentSessions,
             roadmap,
             planClassId: latestPlan ? latestPlan.classId : null,
-            weakAreas: Array.from(weakAreasMap.values()).slice(0, 5) // max 5 weak areas
+            weakAreas: Array.from(weakAreasMap.values()).slice(0, 5), // max 5 weak areas
+            trend: last7Days
         })
     } catch (error) {
         res.status(500).json({ message: error.message })

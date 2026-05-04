@@ -27,6 +27,7 @@ import classService from '../../services/classService';
 import sessionService from '../../services/sessionService';
 import PreAssessmentModal from '../../components/PreAssessmentModal';
 import FilePreviewModal from '../../components/shared/FilePreviewModal';
+import AddToCalendarButton from '../../components/ui/AddToCalendarButton';
 
 const containerVariants = {
   animate: { transition: { staggerChildren: 0.08 } },
@@ -407,6 +408,15 @@ const ClassDetail = () => {
                                 </Badge>
                               )}
                             </div>
+                            {!isPassed && (
+                              <div className="mb-2">
+                                <AddToCalendarButton
+                                  title={`${milestone.isCompulsory ? '\uD83D\uDCCC ' : ''}${milestone.topic}`}
+                                  description={`Milestone for ${classData?.name || 'class'}${milestone.isCompulsory ? ' (Required)' : ''}. Deadline: ${new Date(milestone.deadline).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`}
+                                  startDate={new Date(milestone.deadline)}
+                                />
+                              </div>
+                            )}
                             {!isPassed && materials.length > 0 && (
                               <Button
                                 variant="ghost"

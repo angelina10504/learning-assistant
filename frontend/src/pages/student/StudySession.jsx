@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Clock, BookOpen, HelpCircle, Play, BarChart3, AlertTriangle, Send, Lightbulb, Menu, X } from 'lucide-react';
@@ -12,6 +12,77 @@ import Button from '../../components/ui/Button';
 import sessionService from '../../services/sessionService';
 import FinalQuizModal from '../../components/student/FinalQuizModal';
 import { Activity, CheckCircle2 } from 'lucide-react';
+
+// Defined outside StudySession so React never recreates it on parent re-renders
+const SidebarContent = memo(({ planTopics, sessionData, sessionStats }) => (
+  <div className="space-y-6">
+    {/* Topic Roadmap from Plan */}
+    {planTopics.length > 0 && (
+      <TopicRoadmap
+        topics={planTopics}
+        title="Study Plan Topics"
+        subtitle={sessionData.className}
+      />
+    )}
+
+    {/* Session Stats */}
+    <motion.div
+      className="card p-4 relative overflow-hidden"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2 }}
+    >
+      <Activity className="absolute -bottom-2 -right-2 w-16 h-16 text-indigo-500/10 -rotate-12" />
+
+      <h3 className="font-semibold text-slate-50 mb-4">Session Stats</h3>
+      <div className="space-y-3 relative z-10">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400 flex items-center gap-1">
+            <HelpCircle className="w-3 h-3" /> Questions Asked
+          </span>
+          <span className="text-sm font-bold text-slate-50">{sessionStats.questionsAsked}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400 flex items-center gap-1">
+            <span>&#10003;</span> Correct Answers
+          </span>
+          <span className="text-sm font-bold text-emerald-400">
+            {sessionStats.correctAnswers}/{sessionStats.totalAnswered}
+          </span>
+        </div>
+        <div className="pt-2 border-t border-slate-700/50 flex items-center justify-between">
+          <span className="text-xs text-slate-400 flex items-center gap-1">
+            <Lightbulb className="w-3 h-3" /> Confidence
+          </span>
+          <span className="text-sm font-bold text-cyan-300">{sessionStats.confidence}%</span>
+        </div>
+      </div>
+    </motion.div>
+
+    {/* Weak Spots */}
+    {sessionData.weakTopics && sessionData.weakTopics.length > 0 && (
+      <motion.div
+        className="card p-4 border border-amber-600/20"
+        style={{ background: 'rgba(217,119,6,0.08)' }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+      >
+        <h3 className="font-semibold text-slate-50 mb-2 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4" />
+          Weak Spots Detected
+        </h3>
+        <div className="space-y-2">
+          {sessionData.weakTopics.map((wt, idx) => (
+            <p key={idx} className="text-xs text-slate-300">
+              &bull; {wt.topic}
+            </p>
+          ))}
+        </div>
+      </motion.div>
+    )}
+  </div>
+));
 
 const StudySession = () => {
   const { id: sessionId } = useParams();
@@ -161,7 +232,7 @@ const StudySession = () => {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  const calculateProgressValue = () => {
+  const calculateProgressValue = useCallback(() => {
     let score = 0;
     const humanMessages = messages.filter(m => m.role === 'user').length;
     score += Math.min(humanMessages * 5, 30);
@@ -174,18 +245,20 @@ const StudySession = () => {
       score += 10;
     }
     return Math.min(score, 100);
-  };
+  }, [messages.length, sessionStats.correctAnswers, sessionStats.totalAnswered, sessionStats.confidence, sessionStartTime]);
 
+  // Update progress whenever the stable calculateProgressValue changes
+  useEffect(() => {
+    setProgress(calculateProgressValue());
+  }, [calculateProgressValue]);
+
+  // Periodic refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       setProgress(calculateProgressValue());
     }, 30000);
     return () => clearInterval(interval);
-  }, [messages.length, sessionStats, sessionStartTime]);
-
-  useEffect(() => {
-    setProgress(calculateProgressValue());
-  }, [messages.length, sessionStats]);
+  }, [calculateProgressValue]);
 
   const splitMessageContent = (content) => {
     const parsed = parseQuizFromMessage(content);
@@ -365,75 +438,6 @@ const StudySession = () => {
     );
   }
 
-  const SidebarContent = () => (
-    <div className="space-y-6">
-      {/* Topic Roadmap from Plan */}
-      {planTopics.length > 0 && (
-        <TopicRoadmap
-          topics={planTopics}
-          title="Study Plan Topics"
-          subtitle={sessionData.className}
-        />
-      )}
-
-      {/* Session Stats */}
-      <motion.div
-        className="card p-4 relative overflow-hidden"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        <Activity className="absolute -bottom-2 -right-2 w-16 h-16 text-indigo-500/10 -rotate-12" />
-
-        <h3 className="font-semibold text-slate-50 mb-4">Session Stats</h3>
-        <div className="space-y-3 relative z-10">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400 flex items-center gap-1">
-              <HelpCircle className="w-3 h-3" /> Questions Asked
-            </span>
-            <span className="text-sm font-bold text-slate-50">{sessionStats.questionsAsked}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400 flex items-center gap-1">
-              <span>&#10003;</span> Correct Answers
-            </span>
-            <span className="text-sm font-bold text-emerald-400">
-              {sessionStats.correctAnswers}/{sessionStats.totalAnswered}
-            </span>
-          </div>
-          <div className="pt-2 border-t border-slate-700/50 flex items-center justify-between">
-            <span className="text-xs text-slate-400 flex items-center gap-1">
-              <Lightbulb className="w-3 h-3" /> Confidence
-            </span>
-            <span className="text-sm font-bold text-cyan-300">{sessionStats.confidence}%</span>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Weak Spots */}
-      {sessionData.weakTopics && sessionData.weakTopics.length > 0 && (
-        <motion.div
-          className="card p-4 border border-amber-600/20"
-          style={{ background: 'rgba(217,119,6,0.08)' }}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-        >
-          <h3 className="font-semibold text-slate-50 mb-2 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" />
-            Weak Spots Detected
-          </h3>
-          <div className="space-y-2">
-            {sessionData.weakTopics.map((wt, idx) => (
-              <p key={idx} className="text-xs text-slate-300">
-                &bull; {wt.topic}
-              </p>
-            ))}
-          </div>
-        </motion.div>
-      )}
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-[#050816] flex flex-col">
@@ -551,7 +555,7 @@ const StudySession = () => {
                   <X className="w-5 h-5 text-slate-400" />
                 </button>
               </div>
-              <SidebarContent />
+              <SidebarContent planTopics={planTopics} sessionData={sessionData} sessionStats={sessionStats} />
             </motion.div>
           </>
         )}
@@ -671,7 +675,7 @@ const StudySession = () => {
 
         {/* Desktop Sidebar */}
         <div className="hidden lg:block lg:col-span-1">
-          <SidebarContent />
+          <SidebarContent planTopics={planTopics} sessionData={sessionData} sessionStats={sessionStats} />
         </div>
       </main>
 

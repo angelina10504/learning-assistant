@@ -13,6 +13,10 @@ import { CardSkeleton, StatCardSkeleton } from '../../components/ui/Skeleton';
 import Button from '../../components/ui/Button';
 import classService from '../../services/classService';
 import sessionService from '../../services/sessionService';
+import useCountUp from '../../hooks/useCountUp';
+import GlassTooltip from '../../components/ui/GlassTooltip';
+import MasteryRing from '../../components/ui/MasteryRing';
+import Sparkline from '../../components/ui/Sparkline';
 
 const containerVariants = {
   animate: { transition: { staggerChildren: 0.08 } },
@@ -45,6 +49,13 @@ const StudentDashboard = () => {
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [trend, setTrend] = useState([]);
+
+  // Animated stat counters
+  const topicsCounter = useCountUp(stats.topicsCompleted?.completed || 0);
+  const hoursCounter = useCountUp(stats.studyHours || 0, 1200, 1);
+  const streakCounter = useCountUp(stats.currentStreak || 0);
+  const confidenceCounter = useCountUp(stats.avgConfidence || 0);
 
   const stripMarkdown = (text) => {
     if (!text) return '';
@@ -92,6 +103,7 @@ const StudentDashboard = () => {
           if (data.roadmap) setRoadmap(data.roadmap);
           if (data.planClassId) setSelectedRoadmapClass(data.planClassId?.toString());
           if (data.weakAreas) setWeakAreas(data.weakAreas);
+          if (data.trend) setTrend(data.trend);
         }
       } catch (err) {
         console.error('Fetch dashboard error', err);
@@ -220,23 +232,35 @@ const StudentDashboard = () => {
       icon: BookOpen,
       label: 'Topics Completed',
       value: `${stats?.topicsCompleted.completed}/${stats?.topicsCompleted.total}`,
+      counterRef: topicsCounter.ref,
+      counterValue: `${topicsCounter.count}/${stats?.topicsCompleted.total}`,
     },
     {
       icon: Clock,
       label: 'Study Hours',
       value: `${stats?.studyHours}h`,
+      counterRef: hoursCounter.ref,
+      counterValue: `${hoursCounter.count}h`,
     },
     {
       icon: Flame,
       label: 'Day Streak',
       value: stats?.currentStreak,
+      counterRef: streakCounter.ref,
+      counterValue: streakCounter.count,
     },
     {
       icon: Lightbulb,
       label: 'Avg Confidence',
       value: `${stats?.avgConfidence}%`,
+      counterRef: confidenceCounter.ref,
+      counterValue: `${confidenceCounter.count}%`,
     },
   ];
+
+  const overallMastery = stats.topicsCompleted?.total > 0
+    ? Math.round((stats.topicsCompleted.completed / stats.topicsCompleted.total) * 100)
+    : 0;
 
   return (
     <div className="min-h-screen bg-[#050816]">
@@ -454,6 +478,11 @@ const StudentDashboard = () => {
 
           {/* Right Column - Roadmap */}
           <div className="lg:col-span-1">
+            {/* Mastery Ring */}
+            <div className="card p-5 mb-4 flex items-center justify-center">
+              <MasteryRing percentage={overallMastery} size={130} />
+            </div>
+
             {/* Class Selector — only shown when enrolled in 2+ classes */}
             {classes.length > 1 && (
               <div className="mb-3">
@@ -536,8 +565,8 @@ const StudentDashboard = () => {
             {/* Summary Stat Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {[
-                { label: 'Topics Completed', value: `${stats?.topicsCompleted?.completed ?? 0}/${stats?.topicsCompleted?.total ?? 0}`, color: '#34d399', icon: BookOpen },
-                { label: 'Study Hours', value: `${Math.round(analytics.summary.totalStudyMinutes / 60 * 10) / 10}h`, color: '#818cf8', icon: Clock },
+                { label: 'Topics Completed', value: `${stats?.topicsCompleted?.completed ?? 0}/${stats?.topicsCompleted?.total ?? 0}`, color: '#34d399', icon: BookOpen, sparklineData: trend.map(d => d.sessions) },
+                { label: 'Study Hours', value: `${Math.round(analytics.summary.totalStudyMinutes / 60 * 10) / 10}h`, color: '#818cf8', icon: Clock, sparklineData: trend.map(d => d.minutes) },
                 { label: 'Day Streak', value: stats?.currentStreak ?? 0, color: '#f97316', icon: Flame },
                 { label: 'Quizzes Taken', value: analytics.summary.totalQuizzesTaken, color: '#22d3ee', icon: ClipboardList },
                 { label: 'Avg Quiz Score', value: `${analytics.summary.avgQuizScore}%`, color: '#fbbf24', icon: Award },
@@ -561,6 +590,11 @@ const StudentDashboard = () => {
                     <div className="mt-2 h-1 rounded-full bg-white/[0.06]">
                       <div className="h-full rounded-full" style={{ width: '60%', background: stat.color }} />
                     </div>
+                    {stat.sparklineData && stat.sparklineData.length > 0 && (
+                      <div className="mt-3 flex justify-center">
+                        <Sparkline data={stat.sparklineData} color={stat.color} width={80} height={24} />
+                      </div>
+                    )}
                   </motion.div>
                 );
               })}
@@ -681,8 +715,7 @@ const StudentDashboard = () => {
                       <XAxis dataKey="date" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '10px' }} tickFormatter={(d) => new Date(d).toLocaleDateString('en', { month: 'short', day: 'numeric' })} />
                       <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} />
                       <Tooltip
-                        contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px' }}
-                        itemStyle={{ color: '#f1f5f9' }}
+                        content={<GlassTooltip />}
                         labelFormatter={(d) => new Date(d).toLocaleDateString()}
                         formatter={(value, name) => [name === 'minutes' ? `${value} min` : value, name === 'minutes' ? 'Study Time' : 'Messages']}
                       />

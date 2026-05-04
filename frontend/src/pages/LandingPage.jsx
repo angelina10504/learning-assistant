@@ -560,6 +560,103 @@ const LandingPage = () => {
 
       <Divider />
 
+      {/* ── SYSTEM ARCHITECTURE ──────────────────────────────────────────── */}
+      <section className="relative py-24 px-6" id="architecture">
+        <div className="max-w-5xl mx-auto">
+          <motion.div
+            className="text-center mb-16"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Under the Hood</h2>
+            <p className="text-white/50 max-w-xl mx-auto">How our AI agent processes your study materials and delivers personalized tutoring</p>
+          </motion.div>
+
+          <div className="relative">
+            {/* Architecture Flow */}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
+              {[
+                { icon: '📄', title: 'Upload', desc: 'PDF Materials', color: '#818cf8' },
+                { icon: '🧠', title: 'Embed', desc: 'MiniLM-L6-v2', color: '#22d3ee' },
+                { icon: '🔍', title: 'Retrieve', desc: 'ChromaDB RAG', color: '#34d399' },
+                { icon: '⚡', title: 'Reason', desc: 'LangChain Agent', color: '#fbbf24' },
+                { icon: '💬', title: 'Respond', desc: 'Adaptive Tutor', color: '#f472b6' },
+              ].map((step, idx) => (
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: idx * 0.15 }}
+                  className="relative"
+                >
+                  {/* Connector line (not on last item) */}
+                  {idx < 4 && (
+                    <motion.div
+                      className="hidden md:block absolute top-1/2 -right-2 w-4 h-0.5"
+                      style={{ background: `linear-gradient(to right, ${step.color}, transparent)` }}
+                      initial={{ scaleX: 0 }}
+                      whileInView={{ scaleX: 1 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: idx * 0.15 + 0.3 }}
+                    />
+                  )}
+
+                  <div
+                    className="rounded-2xl p-5 text-center border transition-all duration-300 hover:scale-105"
+                    style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      borderColor: 'rgba(255,255,255,0.06)',
+                      boxShadow: `0 0 20px ${step.color}10`,
+                    }}
+                  >
+                    <motion.div
+                      className="text-3xl mb-3"
+                      animate={{ y: [0, -4, 0] }}
+                      transition={{ repeat: Infinity, duration: 2, delay: idx * 0.3 }}
+                    >
+                      {step.icon}
+                    </motion.div>
+                    <h3 className="text-sm font-bold text-white mb-1">{step.title}</h3>
+                    <p className="text-xs text-white/40">{step.desc}</p>
+
+                    {/* Animated pulse dot */}
+                    <motion.div
+                      className="w-2 h-2 rounded-full mx-auto mt-3"
+                      style={{ background: step.color }}
+                      animate={{ scale: [1, 1.5, 1], opacity: [0.5, 1, 0.5] }}
+                      transition={{ repeat: Infinity, duration: 1.5, delay: idx * 0.2 }}
+                    />
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Bottom row — supporting tech */}
+            <motion.div
+              className="mt-10 flex flex-wrap justify-center gap-3"
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.8 }}
+            >
+              {['React 19', 'Express 5', 'MongoDB', 'FastAPI', 'Groq LLM', 'Tailwind CSS'].map((tech, i) => (
+                <span
+                  key={i}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium text-white/50 border border-white/[0.06]"
+                  style={{ background: 'rgba(255,255,255,0.02)' }}
+                >
+                  {tech}
+                </span>
+              ))}
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      <Divider />
+
       {/* ── FEATURES ─────────────────────────────────────────────────────── */}
       <section id="features" className="relative py-28 px-4 overflow-hidden z-10">
         <div

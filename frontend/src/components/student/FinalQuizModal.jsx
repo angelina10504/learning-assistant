@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, XCircle, AlertTriangle, ArrowRight, Loader2, ArrowLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import sessionService from '../../services/sessionService';
 import toast from 'react-hot-toast';
+import confetti from 'canvas-confetti';
 
 const FinalQuizModal = ({ isOpen, onClose, topicName, classId, sessionId, difficulty, onComplete }) => {
   const [stage, setStage] = useState('intro'); // intro, questions, results
@@ -22,6 +23,33 @@ const FinalQuizModal = ({ isOpen, onClose, topicName, classId, sessionId, diffic
       setResultsData(null);
     }
   }, [isOpen, topicName]);
+
+  // 🎉 Confetti burst when student passes
+  useEffect(() => {
+    if (stage === 'results' && resultsData?.passed) {
+      const duration = 2500;
+      const end = Date.now() + duration;
+
+      const frame = () => {
+        confetti({
+          particleCount: 3,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.7 },
+          colors: ['#818cf8', '#22d3ee', '#34d399', '#fbbf24'],
+        });
+        confetti({
+          particleCount: 3,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.7 },
+          colors: ['#818cf8', '#22d3ee', '#34d399', '#fbbf24'],
+        });
+        if (Date.now() < end) requestAnimationFrame(frame);
+      };
+      frame();
+    }
+  }, [stage, resultsData]);
 
   if (!isOpen) return null;
 

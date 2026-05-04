@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Users, BookOpen, BarChart3, AlertTriangle, Plus, BookMarked, Download, Trophy, Medal, Copy } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import useCountUp from '../../hooks/useCountUp';
+import GlassTooltip from '../../components/ui/GlassTooltip';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from '../../components/shared/Navbar';
@@ -30,6 +32,12 @@ const TeacherDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [error, setError] = useState(null);
+
+  // Animated counters
+  const studentCounter = useCountUp(analytics?.totalStudentsFromAPI || 0);
+  const classCounter = useCountUp(classes.length);
+  const completionCounter = useCountUp(0); // Avg completion is a string, counter not used for display
+  const alertCounter = useCountUp((alertsSummary?.totalWeakTopics || 0) + (alertsSummary?.totalInterventions || 0));
 
   useEffect(() => {
     fetchData();
@@ -152,43 +160,40 @@ const TeacherDashboard = () => {
     );
   };
 
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div
-          className="border border-white/[0.08] rounded-xl p-3 shadow-lg"
-          style={{ background: 'rgba(15,23,42,0.95)', backdropFilter: 'blur(12px)' }}
-        >
-          <p className="text-slate-300 text-sm font-medium">{payload[0].payload.name}</p>
-          <p className="text-indigo-400 text-sm font-bold">{payload[0].value}%</p>
-        </div>
-      );
-    }
-    return null;
-  };
+
+  // Counters keyed by stat index position
+  const statCounters = [studentCounter, classCounter, completionCounter, alertCounter];
 
   const statItems = [
     {
       label: 'Total Students',
       value: totalStudents,
+      displayValue: studentCounter.count,
+      counterRef: studentCounter.ref,
       icon: Users,
       color: 'from-indigo-500/20 to-indigo-600/20',
     },
     {
       label: 'Active Classes',
       value: classes.length,
+      displayValue: classCounter.count,
+      counterRef: classCounter.ref,
       icon: BookOpen,
       color: 'from-cyan-500/20 to-cyan-600/20',
     },
     {
       label: 'Avg Completion',
       value: `${avgCompletion}%`,
+      displayValue: `${avgCompletion}%`,
+      counterRef: null,
       icon: BarChart3,
       color: 'from-violet-500/20 to-violet-600/20',
     },
     {
       label: 'Weak Topics Flagged',
       value: alertsSummary.totalWeakTopics,
+      displayValue: alertCounter.count,
+      counterRef: alertCounter.ref,
       icon: AlertTriangle,
       color: 'from-orange-500/20 to-orange-600/20',
       action: () => {
@@ -252,12 +257,13 @@ const TeacherDashboard = () => {
                   whileHover={{ y: -2 }}
                   onClick={stat.action}
                   className={stat.action ? 'cursor-pointer' : ''}
+                  ref={stat.counterRef}
                 >
                   <div className="card p-6 hover:border-white/[0.12] transition-all duration-300">
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="text-white/50 text-sm font-medium mb-1">{stat.label}</p>
-                        <p className="text-3xl sm:text-4xl font-bold text-slate-50">{stat.value}</p>
+                        <p className="text-3xl sm:text-4xl font-bold text-slate-50">{stat.displayValue}</p>
                       </div>
                       <div
                         className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -478,7 +484,7 @@ const TeacherDashboard = () => {
                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                                 <XAxis dataKey="name" stroke="rgba(255,255,255,0.3)" tick={<TruncatedTick />} interval={0} />
                                 <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} domain={[0, 100]} />
-                                <Tooltip content={<CustomTooltip />} />
+                                <Tooltip content={<GlassTooltip />} />
                                 <defs>
                                   <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
                                     <stop offset="0%" stopColor="#818cf8" />
