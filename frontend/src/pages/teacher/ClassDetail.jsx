@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Upload, Download, Plus, CheckCircle, Clock, Calendar, FileText, Trash2, Copy, Cpu, LayoutGrid, BarChart3, Users, BookOpen, Flag, AlertCircle, Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from '../../components/shared/Navbar';
@@ -968,40 +968,37 @@ const ClassDetail = () => {
         ) : (
           /* Analytics Tab */
           <div className="space-y-8">
-            {/* Row 1: Summary Stat Cards */}
+
+            {/* ROW 1: Summary Stat Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {[
-                { label: 'Total Students', value: students.length, color: '#818cf8' },
-                { label: 'Avg Progress', value: `${students.length > 0 ? Math.round(students.reduce((s, st) => s + (st.progress || 0), 0) / students.length) : 0}%`, color: '#22d3ee' },
-                { label: 'Avg Confidence', value: `${students.length > 0 ? Math.round(students.reduce((s, st) => s + (st.confidence || 0), 0) / students.length) : 0}%`, color: '#a78bfa' },
-                { label: 'Total Sessions', value: students.reduce((s, st) => s + (st.sessionCount || 0), 0), color: '#34d399' },
-              ].map((stat, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.1 }}
-                  className="card p-5"
-                >
-                  <p className="text-white/50 text-xs uppercase tracking-wider mb-2">{stat.label}</p>
-                  <p className="text-3xl font-bold text-white">{stat.value}</p>
-                  <div className="mt-3 h-1 rounded-full bg-white/[0.06]">
-                    <div className="h-full rounded-full" style={{ width: '60%', background: stat.color }} />
-                  </div>
-                </motion.div>
-              ))}
+              {(() => {
+                const avgProgress = students.length > 0 ? Math.round(students.reduce((s, st) => s + (st.progress || 0), 0) / students.length) : 0;
+                const avgConf = students.length > 0 ? Math.round(students.reduce((s, st) => s + (st.confidence || 0), 0) / students.length) : 0;
+                const totalSessions = students.reduce((s, st) => s + (st.sessionCount || 0), 0);
+                return [
+                  { label: 'Total Students', value: students.length, color: '#818cf8', percent: 100 },
+                  { label: 'Avg Progress', value: `${avgProgress}%`, color: avgProgress >= 60 ? '#34d399' : avgProgress >= 30 ? '#fbbf24' : '#f87171', percent: avgProgress },
+                  { label: 'Avg Confidence', value: `${avgConf}%`, color: avgConf >= 60 ? '#34d399' : avgConf >= 30 ? '#fbbf24' : '#f87171', percent: avgConf },
+                  { label: 'Total Sessions', value: totalSessions, color: '#22d3ee', percent: 100 },
+                ].map((stat, i) => (
+                  <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }} className="card p-5">
+                    <p className="text-white/50 text-xs uppercase tracking-wider mb-2">{stat.label}</p>
+                    <p className="text-3xl font-bold text-white">{stat.value}</p>
+                    <div className="mt-3 h-1 rounded-full bg-white/[0.06]">
+                      <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(stat.percent, 100)}%`, background: stat.color }} />
+                    </div>
+                  </motion.div>
+                ));
+              })()}
             </div>
 
-            {/* Row 2: Mastery Donut + Topic Bar */}
+            {/* ROW 2: Mastery Distribution Donut + Topic Difficulty Analysis */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Chart 1: Mastery Distribution Donut */}
-              <motion.div
-                className="card p-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-              >
-                <h3 className="text-lg font-bold text-white mb-6">Mastery Distribution</h3>
+
+              {/* Left: Mastery Distribution Donut */}
+              <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <h3 className="text-lg font-bold text-white mb-1">Mastery Distribution</h3>
+                <p className="text-white/40 text-xs mb-5">Class-wide topic mastery breakdown</p>
                 {heatmapData ? (() => {
                   const counts = { Mastered: 0, Proficient: 0, Developing: 0, Emerging: 0 };
                   heatmapData.students.forEach(s => {
@@ -1013,46 +1010,45 @@ const ClassDetail = () => {
                       else if (tier === 'emerging') counts.Emerging++;
                     });
                   });
-                  const pieData = Object.entries(counts)
-                    .filter(([, v]) => v > 0)
-                    .map(([name, value]) => ({ name, value }));
+                  const pieData = Object.entries(counts).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
                   const COLORS = { Mastered: '#34d399', Proficient: '#818cf8', Developing: '#60a5fa', Emerging: '#fbbf24' };
                   const total = pieData.reduce((s, d) => s + d.value, 0);
+                  const proficientOrAbove = (counts.Mastered + counts.Proficient);
+                  const started = heatmapData.students.filter(s =>
+                    heatmapData.topics.some(t => s.mastery[t] && s.mastery[t] !== 'not_started')
+                  ).length;
                   return pieData.length > 0 ? (
-                    <div className="flex items-center justify-center gap-8">
-                      <ResponsiveContainer width={200} height={200}>
-                        <PieChart>
-                          <Pie
-                            data={pieData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={55}
-                            outerRadius={85}
-                            paddingAngle={3}
-                            dataKey="value"
-                            stroke="none"
-                          >
-                            {pieData.map((entry) => (
-                              <Cell key={entry.name} fill={COLORS[entry.name]} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', backdropFilter: 'blur(12px)' }}
-                            itemStyle={{ color: '#f1f5f9' }}
-                            formatter={(value) => [`${value} (${Math.round(value / total * 100)}%)`, '']}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="space-y-3">
-                        {pieData.map(d => (
-                          <div key={d.name} className="flex items-center gap-3">
-                            <div className="w-3 h-3 rounded-full" style={{ background: COLORS[d.name] }} />
-                            <span className="text-sm text-white/70">{d.name}</span>
-                            <span className="text-sm font-bold text-white ml-auto">{d.value}</span>
-                          </div>
-                        ))}
+                    <>
+                      <div className="flex items-center justify-center gap-8 mb-4">
+                        <ResponsiveContainer width={200} height={200}>
+                          <PieChart>
+                            <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3} dataKey="value" stroke="none">
+                              {pieData.map((entry) => (
+                                <Cell key={entry.name} fill={COLORS[entry.name]} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', backdropFilter: 'blur(12px)' }}
+                              itemStyle={{ color: '#f1f5f9' }}
+                              formatter={(value) => [`${value} (${Math.round(value / total * 100)}%)`, '']}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="space-y-3">
+                          {pieData.map(d => (
+                            <div key={d.name} className="flex items-center gap-3">
+                              <div className="w-3 h-3 rounded-full" style={{ background: COLORS[d.name] }} />
+                              <span className="text-sm text-white/70">{d.name}</span>
+                              <span className="text-sm font-bold text-white ml-auto">{d.value}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                      <p className="text-xs text-white/40 text-center border-t border-white/[0.06] pt-3">
+                        <span className="text-white/70 font-semibold">{started} of {heatmapData.students.length}</span> students have started learning.{' '}
+                        <span className="text-indigo-400 font-semibold">{proficientOrAbove}</span> are proficient or above.
+                      </p>
+                    </>
                   ) : (
                     <p className="text-white/40 text-center py-8">No mastery data yet</p>
                   );
@@ -1061,46 +1057,115 @@ const ClassDetail = () => {
                 )}
               </motion.div>
 
-              {/* Chart 2: Topic-wise Confidence Horizontal Bar */}
-              <motion.div
-                className="card p-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-              >
-                <h3 className="text-lg font-bold text-white mb-6">Topic-wise Confidence</h3>
+              {/* Right: Topic Difficulty Analysis (Quiz Score vs Confidence) */}
+              <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+                <h3 className="text-lg font-bold text-white mb-1">Topic Difficulty Analysis</h3>
+                <p className="text-white/40 text-xs mb-5">Quiz score vs confidence per topic — spot overconfidence or impostor syndrome</p>
                 {topicProgressData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={topicProgressData} layout="vertical" margin={{ left: 20 }}>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={topicProgressData} margin={{ left: -10, right: 5, bottom: 30 }}>
                       <defs>
-                        <linearGradient id="barGrad" x1="0" y1="0" x2="1" y2="0">
-                          <stop offset="0%" stopColor="#6366f1" />
-                          <stop offset="100%" stopColor="#22d3ee" />
+                        <linearGradient id="quizBarGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#818cf8" />
+                          <stop offset="100%" stopColor="#6366f1" />
+                        </linearGradient>
+                        <linearGradient id="confBarGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#22d3ee" />
+                          <stop offset="100%" stopColor="#06b6d4" />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
-                      <XAxis type="number" domain={[0, 100]} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} />
-                      <YAxis type="category" dataKey="topic" width={100} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} tick={{ fill: 'rgba(255,255,255,0.6)' }} />
-                      <Tooltip content={<GlassTooltip />} formatter={(value) => [`${value}%`, 'Confidence']} />
-                      <Bar dataKey="confidence" fill="url(#barGrad)" radius={[0, 6, 6, 0]} barSize={20} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                      <XAxis dataKey="topic" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '9px' }}
+                        angle={-35} textAnchor="end" height={50}
+                        tickFormatter={t => t.length > 12 ? t.slice(0, 12) + '...' : t} />
+                      <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} />
+                      <Tooltip content={<GlassTooltip />}
+                        formatter={(value, name) => [`${value}%`, name === 'quizScore' ? 'Avg Quiz Score' : 'Avg Confidence']} />
+                      <Legend
+                        formatter={v => <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '11px' }}>{v === 'quizScore' ? 'Quiz Score' : 'Confidence'}</span>}
+                        wrapperStyle={{ paddingTop: '4px' }}
+                      />
+                      <ReferenceLine y={70} stroke="rgba(251,191,36,0.4)" strokeDasharray="5 5"
+                        label={{ value: '70%', position: 'right', fill: 'rgba(251,191,36,0.6)', fontSize: 9 }} />
+                      <Bar dataKey="quizScore" name="quizScore" fill="url(#quizBarGrad)" radius={[4, 4, 0, 0]} barSize={12} />
+                      <Bar dataKey="confidence" name="confidence" fill="url(#confBarGrad)" radius={[4, 4, 0, 0]} barSize={12} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="text-white/40 text-center py-8">No topic data yet</p>
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <p className="text-white/30 text-sm text-center">No topic quiz data yet.<br />Students need to complete quizzes first.</p>
+                  </div>
                 )}
               </motion.div>
             </div>
 
-            {/* Row 3: Progress Histogram + Engagement Scatter */}
+            {/* ROW 3: Student Performance Table + Class Progress Over Time */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Chart 3: Student Progress Distribution */}
-              <motion.div
-                className="card p-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-              >
-                <h3 className="text-lg font-bold text-white mb-6">Student Progress Distribution</h3>
+
+              {/* Left: Student Performance Table (sortable) */}
+              <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+                <h3 className="text-lg font-bold text-white mb-1">Student Performance</h3>
+                <p className="text-white/40 text-xs mb-5">All students sorted by mastery score</p>
+                {students.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr>
+                          <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold">Student</th>
+                          <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold">Mastery</th>
+                          <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold">Quiz Avg</th>
+                          <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold">Sessions</th>
+                          <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold">Last Active</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...students].sort((a, b) => (b.progress || 0) - (a.progress || 0)).map((student, idx) => {
+                          const mastery = student.progress || 0;
+                          const masteryColor = mastery >= 80 ? '#34d399' : mastery >= 60 ? '#818cf8' : mastery >= 40 ? '#fbbf24' : '#f87171';
+                          const masteryTier = mastery >= 80 ? 'Mastered' : mastery >= 60 ? 'Proficient' : mastery >= 40 ? 'Developing' : mastery > 0 ? 'Emerging' : 'Not Started';
+                          const lastActiveStr = student.lastActive
+                            ? (() => {
+                                const days = Math.floor((Date.now() - new Date(student.lastActive).getTime()) / 86400000);
+                                return days === 0 ? 'Today' : days === 1 ? '1d ago' : `${days}d ago`;
+                              })()
+                            : 'Never';
+                          return (
+                            <tr key={student.id || idx}
+                              className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors"
+                              style={{ background: idx % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                              <td className="py-2.5 px-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-xs font-bold shrink-0">
+                                    {student.name?.charAt(0)}
+                                  </div>
+                                  <span className="text-white text-sm font-medium truncate max-w-[100px]">{student.name}</span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: `${masteryColor}22`, color: masteryColor, border: `1px solid ${masteryColor}44` }}>
+                                  {masteryTier}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-white/70 text-sm">{Math.round(student.confidence || 0)}%</td>
+                              <td className="py-2.5 px-3 text-white/70 text-sm">{student.sessionCount || 0}</td>
+                              <td className="py-2.5 px-3 text-white/50 text-xs">{lastActiveStr}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <p className="text-white/30 text-sm">No students enrolled yet</p>
+                  </div>
+                )}
+              </motion.div>
+
+              {/* Right: Student Progress Distribution */}
+              <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
+                <h3 className="text-lg font-bold text-white mb-1">Progress Distribution</h3>
+                <p className="text-white/40 text-xs mb-5">How many students fall into each progress band</p>
                 {students.length > 0 ? (() => {
                   const buckets = [
                     { range: '0-25%', count: 0, color: '#f87171' },
@@ -1116,13 +1181,13 @@ const ClassDetail = () => {
                     else buckets[3].count++;
                   });
                   return (
-                    <ResponsiveContainer width="100%" height={250}>
-                      <BarChart data={buckets}>
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart data={buckets} margin={{ top: 10 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                         <XAxis dataKey="range" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
                         <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} allowDecimals={false} />
-                        <Tooltip content={<GlassTooltip />} />
-                        <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={40}>
+                        <Tooltip content={<GlassTooltip />} formatter={(v) => [`${v} students`, 'Count']} />
+                        <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={44}>
                           {buckets.map((b, i) => (
                             <Cell key={i} fill={b.color} />
                           ))}
@@ -1134,106 +1199,9 @@ const ClassDetail = () => {
                   <p className="text-white/40 text-center py-8">No student data yet</p>
                 )}
               </motion.div>
-
-              {/* Chart 4: Engagement vs Progress Scatter */}
-              <motion.div
-                className="card p-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-              >
-                <h3 className="text-lg font-bold text-white mb-6">Engagement vs Progress</h3>
-                {students.filter(s => s.sessionCount > 0).length > 0 ? (
-                  <ResponsiveContainer width="100%" height={250}>
-                    <ScatterChart margin={{ bottom: 10 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis type="number" dataKey="sessionCount" name="Sessions" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} label={{ value: 'Sessions', position: 'insideBottom', offset: -5, fill: 'rgba(255,255,255,0.4)', fontSize: 11 }} />
-                      <YAxis type="number" dataKey="progress" name="Progress" domain={[0, 100]} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} label={{ value: 'Progress %', angle: -90, position: 'insideLeft', fill: 'rgba(255,255,255,0.4)', fontSize: 11 }} />
-                      <Tooltip
-                        cursor={{ strokeDasharray: '3 3', stroke: 'rgba(255,255,255,0.1)' }}
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const data = payload[0].payload;
-                            return (
-                              <div className="border border-white/[0.08] rounded-xl p-3" style={{ background: 'rgba(15,23,42,0.95)', backdropFilter: 'blur(12px)' }}>
-                                <p className="text-white text-sm font-bold">{data.name}</p>
-                                <p className="text-white/60 text-xs">{data.sessionCount} sessions &bull; {data.progress}% progress</p>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                      <Scatter data={students.filter(s => s.sessionCount > 0)} fillOpacity={0.8}>
-                        {students.filter(s => s.sessionCount > 0).map((s, i) => (
-                          <Cell key={i} fill={(s.progress || 0) >= 75 ? '#34d399' : (s.progress || 0) >= 50 ? '#60a5fa' : (s.progress || 0) >= 25 ? '#fbbf24' : '#f87171'} />
-                        ))}
-                      </Scatter>
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <p className="text-white/40 text-center py-8">No session data yet</p>
-                )}
-              </motion.div>
             </div>
-
-            {/* Row 4: Student Leaderboard Table */}
-            <motion.div
-              className="card p-6"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 }}
-            >
-              <h3 className="text-lg font-bold text-white mb-6">Student Leaderboard</h3>
-              {students.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-white/[0.06]">
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">#</th>
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Student</th>
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Progress</th>
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Confidence</th>
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Sessions</th>
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Topics Done</th>
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Time</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...students].sort((a, b) => (b.progress || 0) - (a.progress || 0)).map((student, idx) => (
-                        <tr key={student.id || idx} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
-                          <td className="py-3 px-4 text-white/40 font-mono text-xs">{idx + 1}</td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-xs font-bold">{student.name?.charAt(0)}</div>
-                              <div>
-                                <p className="text-white text-sm font-medium">{student.name}</p>
-                                <p className="text-white/30 text-xs">{student.email}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <div className="w-16 h-1.5 rounded-full bg-white/[0.06]">
-                                <div className="h-full rounded-full" style={{ width: `${student.progress || 0}%`, background: (student.progress || 0) >= 75 ? '#34d399' : (student.progress || 0) >= 50 ? '#60a5fa' : (student.progress || 0) >= 25 ? '#fbbf24' : '#f87171' }} />
-                              </div>
-                              <span className="text-white text-sm font-medium">{Math.round(student.progress || 0)}%</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-white/80 text-sm">{Math.round(student.confidence || 0)}%</td>
-                          <td className="py-3 px-4 text-white/80 text-sm">{student.sessionCount || 0}</td>
-                          <td className="py-3 px-4 text-white/80 text-sm">{student.topicsCompleted || 0}</td>
-                          <td className="py-3 px-4 text-white/80 text-sm">{student.timeStudied || 0}h</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-white/40 text-center py-8">No students enrolled yet</p>
-              )}
-            </motion.div>
           </div>
+
         )}
       </main>
       </div>

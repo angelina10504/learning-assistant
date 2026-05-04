@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { BookOpen, Clock, Flame, Lightbulb, BookMarked, GraduationCap, Pin, AlertTriangle, Plus, Play, TrendingUp, ClipboardList, Award } from 'lucide-react';
-import { BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import toast from 'react-hot-toast';
 import Navbar from '../../components/shared/Navbar';
 import ProgressBar from '../../components/shared/ProgressBar';
@@ -545,7 +545,7 @@ const StudentDashboard = () => {
         </>
         )}
 
-        {/* ── ANALYTICS TAB ── */}
+        {/* ANALYTICS TAB */}
         {activeTab === 'analytics' && (
           <div className="space-y-8">
             {analyticsLoading ? (
@@ -554,7 +554,7 @@ const StudentDashboard = () => {
                   <div key={i} className="card p-4 h-24 animate-pulse" style={{ background: 'rgba(255,255,255,0.03)' }} />
                 ))}
               </div>
-            ) : !analytics || (analytics.topicPerformance.length === 0 && analytics.quizTimeline.length === 0) ? (
+            ) : !analytics ? (
               <div className="card p-16 text-center">
                 <TrendingUp className="w-12 h-12 text-indigo-400/40 mx-auto mb-4" />
                 <h3 className="text-lg font-bold text-white/60 mb-2">No analytics yet</h3>
@@ -562,287 +562,287 @@ const StudentDashboard = () => {
               </div>
             ) : (<>
 
-            {/* Summary Stat Cards */}
+            {/* Compute fallbacks: new backend has topicBreakdown/quizHistory,
+                old backend has topicPerformance/quizTimeline — support both */}
+            {(() => {
+              // Normalise topicBreakdown — fall back to topicPerformance shape
+              if (!analytics.topicBreakdown || analytics.topicBreakdown.length === 0) {
+                analytics._topicBreakdown = (analytics.topicPerformance || []).map(t => ({
+                  topicName: t.name,
+                  className: t.className,
+                  masteryScore: t.finalQuizScore ?? (t.status === 'completed' ? 80 : t.sessionsCount > 0 ? 40 : 0),
+                  masteryTier: t.status === 'completed' ? 'mastered' : t.sessionsCount > 0 ? 'developing' : 'not_started',
+                  quizScore: t.finalQuizScore ?? null,
+                  quizAttempts: t.quizAttempts || 0,
+                  sessionCount: t.sessionsCount || 0,
+                  totalMinutes: t.totalMinutes || 0,
+                })).sort((a, b) => b.masteryScore - a.masteryScore);
+              } else {
+                analytics._topicBreakdown = analytics.topicBreakdown;
+              }
+              // Normalise quizHistory — fall back to quizTimeline shape
+              if (!analytics.quizHistory || analytics.quizHistory.length === 0) {
+                analytics._quizHistory = (analytics.quizTimeline || []).map(r => ({
+                  topicName: r.topic,
+                  score: r.score,
+                  passed: r.passed,
+                  date: r.date,
+                  attemptNumber: r.attempt || 1,
+                }));
+              } else {
+                analytics._quizHistory = analytics.quizHistory;
+              }
+              // Normalise dailyActivity — fall back to studyActivity (sparse)
+              if (!analytics.dailyActivity || analytics.dailyActivity.length === 0) {
+                const actMap = {};
+                (analytics.studyActivity || []).forEach(d => { actMap[d.date] = d.minutes; });
+                analytics._dailyActivity = Array.from({ length: 28 }, (_, i) => {
+                  const d = new Date(); d.setDate(d.getDate() - (27 - i));
+                  const key = d.toISOString().split('T')[0];
+                  return { date: key, minutes: actMap[key] || 0 };
+                });
+              } else {
+                analytics._dailyActivity = analytics.dailyActivity;
+              }
+              return null;
+            })()}
+
+            {/* ROW 1: Stat Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              {[
-                { label: 'Topics Completed', value: `${stats?.topicsCompleted?.completed ?? 0}/${stats?.topicsCompleted?.total ?? 0}`, color: '#34d399', icon: BookOpen, sparklineData: trend.map(d => d.sessions) },
-                { label: 'Study Hours', value: `${Math.round(analytics.summary.totalStudyMinutes / 60 * 10) / 10}h`, color: '#818cf8', icon: Clock, sparklineData: trend.map(d => d.minutes) },
-                { label: 'Day Streak', value: stats?.currentStreak ?? 0, color: '#f97316', icon: Flame },
-                { label: 'Quizzes Taken', value: analytics.summary.totalQuizzesTaken, color: '#22d3ee', icon: ClipboardList },
-                { label: 'Avg Quiz Score', value: `${analytics.summary.avgQuizScore}%`, color: '#fbbf24', icon: Award },
-                { label: 'Avg Confidence', value: `${stats?.avgConfidence ?? 0}%`, color: '#a78bfa', icon: Lightbulb },
-              ].map((stat, i) => {
-                const Icon = stat.icon;
-                return (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.07 }}
-                    className="card p-4 text-center"
-                  >
-                    {/* Fixed-height icon slot so all cards align */}
-                    <div className="h-5 flex items-center justify-center mb-1">
-                      {Icon ? <Icon className="w-5 h-5" style={{ color: stat.color }} /> : null}
-                    </div>
-                    <p className="text-white/50 text-[10px] uppercase tracking-wider mb-1">{stat.label}</p>
-                    <p className="text-2xl font-bold text-white">{stat.value}</p>
-                    <div className="mt-2 h-1 rounded-full bg-white/[0.06]">
-                      <div className="h-full rounded-full" style={{ width: '60%', background: stat.color }} />
-                    </div>
-                    {stat.sparklineData && stat.sparklineData.length > 0 && (
-                      <div className="mt-3 flex justify-center">
-                        <Sparkline data={stat.sparklineData} color={stat.color} width={80} height={24} />
+              {(() => {
+                const tc = analytics.summary?.completedTopics ?? stats?.topicsCompleted?.completed ?? 0;
+                const tt = analytics.summary?.totalTopics ?? stats?.topicsCompleted?.total ?? 0;
+                const sh = Math.round((analytics.summary?.totalStudyMinutes ?? 0) / 60 * 10) / 10;
+                const qs = analytics.summary?.avgQuizScore ?? 0;
+                const conf = stats?.avgConfidence ?? 0;
+                const cards = [
+                  { label: 'Topics Completed', value: `${tc}/${tt}`, color: '#34d399', icon: BookOpen, percent: tt > 0 ? (tc / tt) * 100 : 0, sparklineData: trend.map(d => d.sessions) },
+                  { label: 'Study Hours', value: `${sh}h`, color: '#818cf8', icon: Clock, percent: Math.min(sh / 10 * 100, 100), sparklineData: trend.map(d => d.minutes) },
+                  { label: 'Day Streak', value: stats?.currentStreak ?? 0, color: '#f97316', icon: Flame, percent: Math.min((stats?.currentStreak ?? 0) / 7 * 100, 100) },
+                  { label: 'Quizzes Taken', value: analytics.summary?.totalQuizzesTaken ?? 0, color: '#22d3ee', icon: ClipboardList, percent: 100 },
+                  { label: 'Avg Quiz Score', value: `${qs}%`, color: qs >= 70 ? '#34d399' : qs >= 40 ? '#fbbf24' : '#f87171', icon: Award, percent: qs },
+                  { label: 'Avg Confidence', value: `${conf}%`, color: conf >= 70 ? '#34d399' : conf >= 40 ? '#fbbf24' : '#f87171', icon: Lightbulb, percent: conf },
+                ];
+                return cards.map((stat, i) => {
+                  const Icon = stat.icon;
+                  return (
+                    <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }} className="card p-4 text-center">
+                      <div className="h-5 flex items-center justify-center mb-1">
+                        {Icon && <Icon className="w-5 h-5" style={{ color: stat.color }} />}
                       </div>
-                    )}
-                  </motion.div>
-                );
-              })}
-            </div>
-
-            {/* Row 1: Mastery Donut + Topic Quiz Scores */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Mastery Distribution Donut */}
-              <motion.div
-                className="card p-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-              >
-                <h3 className="text-lg font-bold text-white mb-6">My Mastery Distribution</h3>
-                {(() => {
-                  const pieData = Object.entries(analytics.tierCounts)
-                    .filter(([, v]) => v > 0)
-                    .map(([name, value]) => ({ name, value }));
-                  const COLORS = { Mastered: '#34d399', Proficient: '#818cf8', Developing: '#60a5fa', Emerging: '#fbbf24', 'Not Started': '#475569' };
-                  const total = pieData.reduce((s, d) => s + d.value, 0);
-
-                  return pieData.length > 0 ? (
-                    <div className="flex items-center justify-center gap-8">
-                      <ResponsiveContainer width={180} height={180}>
-                        <PieChart>
-                          <Pie
-                            data={pieData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={50}
-                            outerRadius={75}
-                            paddingAngle={3}
-                            dataKey="value"
-                            stroke="none"
-                          >
-                            {pieData.map((entry) => (
-                              <Cell key={entry.name} fill={COLORS[entry.name]} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px' }}
-                            itemStyle={{ color: '#f1f5f9' }}
-                            formatter={(value) => [`${value} (${Math.round(value / total * 100)}%)`, '']}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="space-y-2">
-                        {pieData.map(d => (
-                          <div key={d.name} className="flex items-center gap-3">
-                            <div className="w-3 h-3 rounded-full" style={{ background: COLORS[d.name] }} />
-                            <span className="text-sm text-white/70">{d.name}</span>
-                            <span className="text-sm font-bold text-white ml-auto">{d.value}</span>
-                          </div>
-                        ))}
+                      <p className="text-white/50 text-[10px] uppercase tracking-wider mb-1">{stat.label}</p>
+                      <p className="text-2xl font-bold text-white">{stat.value}</p>
+                      <div className="mt-2 h-1 rounded-full bg-white/[0.06]">
+                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(stat.percent, 100)}%`, background: stat.color }} />
                       </div>
-                    </div>
-                  ) : (
-                    <p className="text-white/40 text-center py-8">No mastery data yet — complete some topics first</p>
+                      {stat.sparklineData && stat.sparklineData.length > 0 && (
+                        <div className="mt-3 flex justify-center">
+                          <Sparkline data={stat.sparklineData} color={stat.color} width={80} height={24} />
+                        </div>
+                      )}
+                    </motion.div>
                   );
-                })()}
-              </motion.div>
-
-              {/* Topic Performance Bar Chart */}
-              <motion.div
-                className="card p-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-              >
-                <h3 className="text-lg font-bold text-white mb-6">Topic Quiz Scores</h3>
-                {analytics.topicPerformance.filter(t => t.finalQuizScore != null).length > 0 ? (
-                  <ResponsiveContainer width="100%" height={250}>
-                    <BarChart data={analytics.topicPerformance.filter(t => t.finalQuizScore != null)} layout="vertical" margin={{ left: 20 }}>
-                      <defs>
-                        <linearGradient id="studentBarGrad" x1="0" y1="0" x2="1" y2="0">
-                          <stop offset="0%" stopColor="#6366f1" />
-                          <stop offset="100%" stopColor="#22d3ee" />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" horizontal={false} />
-                      <XAxis type="number" domain={[0, 100]} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} />
-                      <YAxis type="category" dataKey="name" width={100} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} tick={{ fill: 'rgba(255,255,255,0.6)' }} />
-                      <Tooltip
-                        contentStyle={{ background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px' }}
-                        itemStyle={{ color: '#f1f5f9' }}
-                        formatter={(value) => [`${value}%`, 'Quiz Score']}
-                      />
-                      <Bar dataKey="finalQuizScore" fill="url(#studentBarGrad)" radius={[0, 6, 6, 0]} barSize={20} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <p className="text-white/40 text-center py-8">No quiz scores yet — complete topic assessments</p>
-                )}
-              </motion.div>
+                });
+              })()}
             </div>
 
-            {/* Row 2: Study Activity + Quiz Score Trend */}
+            {/* ROW 2: Topic Mastery Breakdown + Quiz Performance Over Time */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Study Activity Over Time */}
-              <motion.div
-                className="card p-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-              >
-                <h3 className="text-lg font-bold text-white mb-6">Study Activity</h3>
-                {analytics.studyActivity.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={250}>
-                    <AreaChart data={analytics.studyActivity}>
-                      <defs>
-                        <linearGradient id="activityGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.6} />
-                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="date" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '10px' }} tickFormatter={(d) => new Date(d).toLocaleDateString('en', { month: 'short', day: 'numeric' })} />
-                      <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} />
-                      <Tooltip
-                        content={<GlassTooltip />}
-                        labelFormatter={(d) => new Date(d).toLocaleDateString()}
-                        formatter={(value, name) => [name === 'minutes' ? `${value} min` : value, name === 'minutes' ? 'Study Time' : 'Messages']}
-                      />
-                      <Area type="monotone" dataKey="minutes" stroke="#6366f1" fillOpacity={1} fill="url(#activityGrad)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+
+              {/* Left: Topic Mastery Breakdown */}
+              <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                <h3 className="text-lg font-bold text-white mb-1">Topic Mastery Breakdown</h3>
+                <p className="text-white/40 text-xs mb-5">All topics from your study plans, sorted by mastery</p>
+                {analytics._topicBreakdown && analytics._topicBreakdown.length > 0 ? (
+                  <div className="space-y-4 max-h-[320px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.1) transparent' }}>
+                    {analytics._topicBreakdown.map((t, idx) => {
+                      const tierColor = t.masteryTier === 'mastered' ? '#34d399'
+                        : t.masteryTier === 'proficient' ? '#818cf8'
+                        : t.masteryTier === 'developing' ? '#fbbf24'
+                        : t.masteryTier === 'emerging' ? '#f97316'
+                        : '#475569';
+                      const tierLabel = t.masteryTier === 'not_started' ? 'Not Started'
+                        : t.masteryTier.charAt(0).toUpperCase() + t.masteryTier.slice(1);
+                      return (
+                        <div key={idx}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-sm text-white/80 truncate max-w-[55%]" title={t.topicName}>{t.topicName}</span>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: `${tierColor}22`, color: tierColor, border: `1px solid ${tierColor}44` }}>{tierLabel}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                              <motion.div
+                                className="h-full rounded-full"
+                                style={{ background: tierColor }}
+                                initial={{ width: 0 }}
+                                animate={{ width: `${t.masteryScore}%` }}
+                                transition={{ duration: 0.8, delay: 0.1 + idx * 0.04 }}
+                              />
+                            </div>
+                            <span className="text-xs font-bold text-white/70 w-8 text-right">{t.masteryScore}%</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : (
-                  <p className="text-white/40 text-center py-8">Start studying to see your activity trend</p>
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <BookOpen className="w-10 h-10 text-white/10 mb-3" />
+                    <p className="text-white/30 text-sm text-center">No topics in your study plans yet.<br />Generate a study plan to see mastery.</p>
+                  </div>
                 )}
               </motion.div>
 
-              {/* Quiz Score Trend */}
-              <motion.div
-                className="card p-6"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-              >
-                <h3 className="text-lg font-bold text-white mb-6">Quiz Score Trend</h3>
-                {analytics.quizTimeline.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={250}>
-                    <LineChart data={analytics.quizTimeline}>
+              {/* Right: Quiz Performance Over Time */}
+              <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+                <h3 className="text-lg font-bold text-white mb-1">Quiz Performance Over Time</h3>
+                <p className="text-white/40 text-xs mb-5">Your quiz scores plotted chronologically — dashed line is pass threshold (70%)</p>
+                {analytics._quizHistory && analytics._quizHistory.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <AreaChart data={analytics._quizHistory} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="quizGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.5} />
+                          <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                      <XAxis dataKey="date" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '10px' }} tickFormatter={(d) => new Date(d).toLocaleDateString('en', { month: 'short', day: 'numeric' })} />
+                      <XAxis dataKey="date" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '10px' }}
+                        tickFormatter={d => new Date(d).toLocaleDateString('en', { month: 'short', day: 'numeric' })} />
                       <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} />
                       <Tooltip
                         content={({ active, payload }) => {
                           if (active && payload && payload.length) {
-                            const data = payload[0].payload;
+                            const d = payload[0].payload;
                             return (
-                              <div className="border border-white/[0.08] rounded-xl p-3" style={{ background: 'rgba(15,23,42,0.95)' }}>
-                                <p className="text-white text-sm font-bold">{data.topic}</p>
-                                <p className="text-white/60 text-xs">Score: {data.score}% &bull; {data.passed ? 'Passed' : 'Failed'} &bull; Attempt #{data.attempt}</p>
+                              <div className="border border-white/[0.08] rounded-xl p-3" style={{ background: 'rgba(15,23,42,0.95)', backdropFilter: 'blur(12px)' }}>
+                                <p className="text-white text-xs font-bold mb-1">{d.topicName}</p>
+                                <p className="text-white/60 text-xs">{new Date(d.date).toLocaleDateString()} &bull; Score: <span className={d.passed ? 'text-emerald-400' : 'text-red-400'}>{d.score}%</span> &bull; Attempt #{d.attemptNumber}</p>
                               </div>
                             );
                           }
                           return null;
                         }}
                       />
-                      <Line type="monotone" dataKey="score" stroke="#22d3ee" strokeWidth={2} dot={{ fill: '#22d3ee', r: 4, strokeWidth: 0 }} activeDot={{ r: 6, fill: '#22d3ee' }} />
-                      <Line type="monotone" dataKey={() => 70} stroke="rgba(251,191,36,0.3)" strokeDasharray="5 5" dot={false} name="Pass Threshold" />
-                    </LineChart>
+                      <ReferenceLine y={70} stroke="rgba(251,191,36,0.5)" strokeDasharray="5 5"
+                        label={{ value: 'Pass: 70%', position: 'insideTopRight', fill: 'rgba(251,191,36,0.7)', fontSize: 10 }} />
+                      <Area type="monotone" dataKey="score" stroke="#6366f1" strokeWidth={2}
+                        fill="url(#quizGrad)" dot={{ r: 4, fill: '#818cf8', strokeWidth: 0 }}
+                        activeDot={{ r: 6, fill: '#34d399', strokeWidth: 0 }} />
+                    </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="text-white/40 text-center py-8">Take quizzes to see your score trend</p>
+                  <div className="flex flex-col items-center justify-center" style={{ height: 280 }}>
+                    <Award className="w-12 h-12 text-white/10 mb-3" />
+                    <p className="text-white/30 text-sm text-center">Complete your first quiz to see your performance trends</p>
+                  </div>
                 )}
               </motion.div>
             </div>
 
-            {/* Topic Breakdown Table */}
-            <motion.div
-              className="card p-6"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 }}
-            >
-              <h3 className="text-lg font-bold text-white mb-6">Topic Breakdown</h3>
-              {analytics.topicPerformance.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-white/[0.06]">
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Topic</th>
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Status</th>
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Sessions</th>
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Time</th>
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">In-Session Accuracy</th>
-                        <th className="text-left py-3 px-4 text-white/50 text-xs uppercase tracking-wider font-semibold">Quiz Score</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {analytics.topicPerformance.map((topic, idx) => {
-                        const statusColors = {
-                          completed: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-                          in_progress: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-                          needs_review: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-                          pending: 'bg-white/[0.04] text-white/40 border-white/[0.06]',
-                        };
-                        const accuracy = topic.inSessionTotal > 0 ? Math.round(topic.inSessionCorrect / topic.inSessionTotal * 100) : null;
+            {/* ROW 3: Study Activity Heatmap + Focus Recommendations */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-                        return (
-                          <tr key={idx} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
-                            <td className="py-3 px-4">
-                              <p className="text-white text-sm font-medium">{topic.name}</p>
-                              <p className="text-white/30 text-xs">{topic.className}</p>
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className={`text-xs px-2 py-1 rounded-full border ${statusColors[topic.status] || statusColors.pending}`}>
-                                {topic.status?.replace('_', ' ') || 'pending'}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-white/80 text-sm">{topic.sessionsCount}</td>
-                            <td className="py-3 px-4 text-white/80 text-sm">{topic.totalMinutes}m</td>
-                            <td className="py-3 px-4">
-                              {accuracy !== null ? (
-                                <div className="flex items-center gap-2">
-                                  <div className="w-12 h-1.5 rounded-full bg-white/[0.06]">
-                                    <div className="h-full rounded-full" style={{ width: `${accuracy}%`, background: accuracy >= 70 ? '#34d399' : accuracy >= 40 ? '#fbbf24' : '#f87171' }} />
-                                  </div>
-                                  <span className="text-white/80 text-sm">{accuracy}%</span>
-                                </div>
-                              ) : (
-                                <span className="text-white/30 text-sm">—</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">
-                              {topic.finalQuizScore != null ? (
-                                <span className={`text-sm font-bold ${topic.finalQuizScore >= 70 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                                  {topic.finalQuizScore}%
-                                </span>
-                              ) : (
-                                <span className="text-white/30 text-sm">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              {/* Left: 28-day Heatmap */}
+              <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+                <h3 className="text-lg font-bold text-white mb-1">Study Activity</h3>
+                <p className="text-white/40 text-xs mb-5">Last 4 weeks of study activity</p>
+                {analytics._dailyActivity && analytics._dailyActivity.some(d => d.minutes > 0) ? (() => {
+                  const totalMin = analytics._dailyActivity.reduce((s, d) => s + d.minutes, 0);
+                  const activeDays = analytics._dailyActivity.filter(d => d.minutes > 0).length;
+                  return (
+                    <>
+                      <div className="mb-3">
+                        <div className="grid grid-cols-7 gap-1 mb-1">
+                          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+                            <div key={i} className="text-center text-[9px] text-white/30">{d}</div>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-7 gap-1">
+                          {analytics._dailyActivity.map((day, idx) => {
+                            let bg = 'rgba(255,255,255,0.03)';
+                            if (day.minutes >= 45) bg = '#6366f1';
+                            else if (day.minutes >= 15) bg = 'rgba(99,102,241,0.55)';
+                            else if (day.minutes > 0)  bg = 'rgba(99,102,241,0.25)';
+                            return (
+                              <div key={idx} title={`${day.date}: ${day.minutes} min`}
+                                className="aspect-square rounded-sm transition-opacity hover:opacity-80"
+                                style={{ background: bg }} />
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 mb-4">
+                        {[
+                          { label: 'None', bg: 'rgba(255,255,255,0.03)' },
+                          { label: '1-15m', bg: 'rgba(99,102,241,0.25)' },
+                          { label: '15-45m', bg: 'rgba(99,102,241,0.55)' },
+                          { label: '45m+', bg: '#6366f1' },
+                        ].map(l => (
+                          <div key={l.label} className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded-sm" style={{ background: l.bg }} />
+                            <span className="text-[9px] text-white/40">{l.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-center text-xs text-white/40 border-t border-white/[0.06] pt-3">
+                        Total: <span className="text-white/70 font-semibold">{Math.round(totalMin / 60 * 10) / 10}h</span> across <span className="text-white/70 font-semibold">{activeDays} days</span>
+                      </p>
+                    </>
+                  );
+                })() : (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Clock className="w-10 h-10 text-white/10 mb-3" />
+                    <p className="text-white/30 text-sm text-center">Start a study session to build your activity heatmap</p>
+                  </div>
+                )}
+              </motion.div>
+
+              {/* Right: Focus Recommendations */}
+              <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
+                <h3 className="text-lg font-bold text-white mb-1">Focus Recommendations</h3>
+                <p className="text-white/40 text-xs mb-5">Personalised suggestions based on your data</p>
+                <div className="space-y-3">
+                  {(() => {
+                    const recs = [];
+                    const breakdown = analytics._topicBreakdown || [];
+                    const streak = stats?.currentStreak ?? 0;
+
+                    if (streak === 0)
+                      recs.push({ icon: '&#128293;', title: 'Build a streak', desc: 'Start a session today — daily practice makes the biggest difference.' });
+
+                    breakdown.filter(t => (t.masteryTier === 'emerging' || t.masteryScore < 40) && t.masteryScore < 80)
+                      .slice(0, 2)
+                      .forEach(t => recs.push({ icon: '&#128204;', title: t.topicName, desc: `Mastery is ${t.masteryScore}%. A focused revision session would help.` }));
+
+                    breakdown.filter(t => t.quizAttempts > 0 && t.quizScore !== null && t.quizScore < 70)
+                      .slice(0, 1)
+                      .forEach(t => recs.push({ icon: '&#128260;', title: t.topicName, desc: `You scored ${t.quizScore}% on the quiz. Review and retry to pass!` }));
+
+                    if (recs.length === 0 && breakdown.length > 0 && breakdown.every(t => t.masteryTier === 'mastered'))
+                      recs.push({ icon: '&#127881;', title: 'Amazing work!', desc: "You've mastered all topics in your current plans." });
+
+                    if (recs.length === 0)
+                      recs.push({ icon: '&#128161;', title: 'Keep it up', desc: "You're making steady progress. Keep going with your study roadmap!" });
+
+                    return recs.slice(0, 4).map((r, idx) => (
+                      <div key={idx} className="flex items-start gap-3 rounded-xl px-4 py-3 transition-colors hover:bg-white/[0.03]"
+                        style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                        <span className="text-xl mt-0.5" dangerouslySetInnerHTML={{ __html: r.icon }} />
+                        <div>
+                          <p className="text-sm font-bold text-white mb-0.5">{r.title}</p>
+                          <p className="text-xs text-white/50 leading-relaxed">{r.desc}</p>
+                        </div>
+                      </div>
+                    ));
+                  })()}
                 </div>
-              ) : (
-                <p className="text-white/40 text-center py-8">No topic data yet</p>
-              )}
-            </motion.div>
+              </motion.div>
+            </div>
             </>)}
           </div>
         )}
+
       </main>
       </div>
 

@@ -155,91 +155,126 @@ router.get('/student-analytics', protect, authorize('student'), async (req, res)
     try {
         const studentId = req.user._id
 
-        // Fetch all data in parallel
         const [sessions, plans, quizResults] = await Promise.all([
             StudySession.find({ studentId }).populate('classId', 'name'),
             StudyPlan.find({ studentId }).populate('classId', 'name'),
             QuizResult.find({ studentId })
         ])
 
-        // 1. Per-topic performance data (for bar chart)
+        const { computeMasteryScore } = require('../utils/masteryScore')
+
+        // ── 1. TOPIC BREAKDOWN ──────────────────────────────────────────────
+        // Include ALL plan topics (even pending ones with masteryScore 0)
+        // so the student sees every topic, not just ones they've interacted with.
         const topicMap = new Map()
 
         plans.forEach(plan => {
             plan.topics.forEach(t => {
                 if (!topicMap.has(t.name)) {
                     topicMap.set(t.name, {
-                        name: t.name,
-                        status: t.status,
-                        difficulty: t.difficulty,
-                        priority: t.priority,
-                        finalQuizScore: t.finalQuizScore,
-                        quizAttempts: t.quizAttempts || 0,
-                        sessionsCount: 0,
-                        totalMessages: 0,
-                        totalMinutes: 0,
-                        inSessionCorrect: 0,
-                        inSessionTotal: 0,
-                        className: plan.classId?.name || 'Unknown'
+                        topicName: t.name,
+                        planTopic: t,
+                        className: plan.classId?.name || 'Unknown',
+                        topicSessions: [],
+                        topicQuizResults: []
                     })
                 }
             })
         })
 
+        // Orphan topics from sessions/quizzes not in any plan
         sessions.forEach(s => {
-            if (s.topicName && topicMap.has(s.topicName)) {
-                const t = topicMap.get(s.topicName)
-                t.sessionsCount++
-                t.totalMessages += s.messages?.length || 0
-                t.totalMinutes += Math.round(calculateActiveDuration(s) / 60000)
-                t.inSessionCorrect += s.correctAnswers || 0
-                t.inSessionTotal += s.questionsAsked || 0
+            if (s.topicName && !topicMap.has(s.topicName)) {
+                topicMap.set(s.topicName, {
+                    topicName: s.topicName,
+                    planTopic: null,
+                    className: s.classId?.name || 'Unknown',
+                    topicSessions: [],
+                    topicQuizResults: []
+                })
             }
         })
-
-        // Add quiz results
         quizResults.forEach(r => {
-            if (topicMap.has(r.topicName)) {
-                const t = topicMap.get(r.topicName)
-                // Use the best score
-                if (r.score > (t.finalQuizScore || 0)) {
-                    t.finalQuizScore = r.score
-                }
+            if (r.topicName && !topicMap.has(r.topicName)) {
+                topicMap.set(r.topicName, {
+                    topicName: r.topicName,
+                    planTopic: null,
+                    className: 'Unknown',
+                    topicSessions: [],
+                    topicQuizResults: []
+                })
             }
         })
 
-        const topicPerformance = Array.from(topicMap.values())
+        sessions.forEach(s => {
+            if (s.topicName && topicMap.has(s.topicName))
+                topicMap.get(s.topicName).topicSessions.push(s)
+        })
+        quizResults.forEach(r => {
+            if (r.topicName && topicMap.has(r.topicName))
+                topicMap.get(r.topicName).topicQuizResults.push(r)
+        })
 
-        // 2. Mastery tier distribution (for donut)
-        const { computeMasteryScore } = require('../utils/masteryScore')
-        const tierCounts = { Mastered: 0, Proficient: 0, Developing: 0, Emerging: 0, 'Not Started': 0 }
-
-        for (const [topicName, topicData] of topicMap) {
-            const topicSessions = sessions.filter(s => s.topicName === topicName)
-            const topicQuizResults = quizResults.filter(r => r.topicName === topicName)
-            const planTopic = plans.flatMap(p => p.topics).find(t => t.name === topicName)
-
-            const { tier } = computeMasteryScore({
-                sessions: topicSessions,
-                quizResults: topicQuizResults,
-                planTopic
+        const topicBreakdown = Array.from(topicMap.values()).map(t => {
+            const { totalScore, tier } = computeMasteryScore({
+                sessions: t.topicSessions,
+                quizResults: t.topicQuizResults,
+                planTopic: t.planTopic
             })
+            return {
+                topicName: t.topicName,
+                className: t.className,
+                masteryScore: totalScore,
+                masteryTier: tier,
+                quizScore: t.topicQuizResults.length > 0 ? Math.max(...t.topicQuizResults.map(r => r.score)) : null,
+                quizAttempts: t.topicQuizResults.length,
+                sessionCount: t.topicSessions.length,
+                totalMinutes: t.topicSessions.reduce((sum, s) => sum + Math.round(calculateActiveDuration(s) / 60000), 0)
+            }
+        }).sort((a, b) => b.masteryScore - a.masteryScore)
 
-            if (tier === 'mastered') tierCounts.Mastered++
-            else if (tier === 'proficient') tierCounts.Proficient++
-            else if (tier === 'developing') tierCounts.Developing++
-            else if (tier === 'emerging') tierCounts.Emerging++
-            else tierCounts['Not Started']++
+        const tierCounts = { Mastered: 0, Proficient: 0, Developing: 0, Emerging: 0, 'Not Started': 0 }
+        topicBreakdown.forEach(t => {
+            if (t.masteryTier === 'mastered')        tierCounts.Mastered++
+            else if (t.masteryTier === 'proficient')  tierCounts.Proficient++
+            else if (t.masteryTier === 'developing')  tierCounts.Developing++
+            else if (t.masteryTier === 'emerging')    tierCounts.Emerging++
+            else                                      tierCounts['Not Started']++
+        })
+
+        // ── 2. QUIZ HISTORY (chronological) ─────────────────────────────────
+        const quizHistory = [...quizResults]
+            .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt))
+            .map(r => ({
+                topicName: r.topicName,
+                score: r.score,
+                passed: r.passed,
+                date: new Date(r.completedAt).toISOString().split('T')[0],
+                attemptNumber: r.attemptNumber || 1
+            }))
+
+        // ── 3. DAILY ACTIVITY (last 28 days, dense 28-element array) ─────────
+        const dailyActivity = []
+        for (let i = 27; i >= 0; i--) {
+            const d = new Date()
+            d.setDate(d.getDate() - i)
+            const dateStr = d.toISOString().split('T')[0]
+            const daySessions = sessions.filter(s =>
+                s.startedAt && new Date(s.startedAt).toISOString().split('T')[0] === dateStr
+            )
+            dailyActivity.push({
+                date: dateStr,
+                minutes: Math.round(daySessions.reduce((sum, s) => sum + calculateActiveDuration(s), 0) / 60000)
+            })
         }
 
-        // 3. Study activity over time (for area chart)
+        // ── 4. LEGACY FIELDS (kept for backward compat) ──────────────────────
         const activityMap = new Map()
         sessions.forEach(s => {
             if (s.startedAt) {
                 const dateKey = new Date(s.startedAt).toISOString().split('T')[0]
-                if (!activityMap.has(dateKey)) {
+                if (!activityMap.has(dateKey))
                     activityMap.set(dateKey, { date: dateKey, sessions: 0, minutes: 0, messages: 0 })
-                }
                 const day = activityMap.get(dateKey)
                 day.sessions++
                 day.minutes += Math.round(calculateActiveDuration(s) / 60000)
@@ -248,8 +283,7 @@ router.get('/student-analytics', protect, authorize('student'), async (req, res)
         })
         const studyActivity = Array.from(activityMap.values()).sort((a, b) => a.date.localeCompare(b.date))
 
-        // 4. Quiz scores over time (for line chart)
-        const quizTimeline = quizResults
+        const quizTimeline = [...quizResults]
             .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt))
             .map(r => ({
                 date: new Date(r.completedAt).toISOString().split('T')[0],
@@ -259,19 +293,32 @@ router.get('/student-analytics', protect, authorize('student'), async (req, res)
                 attempt: r.attemptNumber
             }))
 
-        // 5. Summary stats
+        const topicPerformance = Array.from(topicMap.values()).map(t => ({
+            name: t.topicName,
+            status: t.planTopic?.status || 'pending',
+            finalQuizScore: t.topicQuizResults.length > 0 ? Math.max(...t.topicQuizResults.map(r => r.score)) : null,
+            quizAttempts: t.topicQuizResults.length,
+            sessionsCount: t.topicSessions.length,
+            totalMinutes: t.topicSessions.reduce((sum, s) => sum + Math.round(calculateActiveDuration(s) / 60000), 0),
+            inSessionCorrect: t.topicSessions.reduce((sum, s) => sum + (s.correctAnswers || 0), 0),
+            inSessionTotal: t.topicSessions.reduce((sum, s) => sum + (s.questionsAsked || 0), 0),
+            className: t.className
+        }))
+
+        // ── 5. SUMMARY STATS ────────────────────────────────────────────────
+        const completedTopics = plans.flatMap(p => p.topics).filter(t => t.status === 'completed').length
         const totalTopics = topicMap.size
-        const completedTopics = topicPerformance.filter(t => t.status === 'completed').length
         const totalStudyMinutes = sessions.reduce((sum, s) => sum + Math.round(calculateActiveDuration(s) / 60000), 0)
         const totalQuizzesTaken = quizResults.length
-        const avgQuizScore = quizResults.length > 0
-            ? Math.round(quizResults.reduce((sum, r) => sum + r.score, 0) / quizResults.length)
+        const avgQuizScore = totalQuizzesTaken > 0
+            ? Math.round(quizResults.reduce((sum, r) => sum + r.score, 0) / totalQuizzesTaken)
             : 0
-        const bestQuizScore = quizResults.length > 0
-            ? Math.max(...quizResults.map(r => r.score))
-            : 0
+        const bestQuizScore = totalQuizzesTaken > 0 ? Math.max(...quizResults.map(r => r.score)) : 0
 
         res.json({
+            topicBreakdown,
+            quizHistory,
+            dailyActivity,
             topicPerformance,
             tierCounts,
             studyActivity,

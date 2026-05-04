@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Users, BookOpen, BarChart3, AlertTriangle, Plus, BookMarked, Download, Trophy, Medal, Copy } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import useCountUp from '../../hooks/useCountUp';
+
 import GlassTooltip from '../../components/ui/GlassTooltip';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
@@ -33,11 +33,6 @@ const TeacherDashboard = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [error, setError] = useState(null);
 
-  // Animated counters
-  const studentCounter = useCountUp(analytics?.totalStudentsFromAPI || 0);
-  const classCounter = useCountUp(classes.length);
-  const completionCounter = useCountUp(0); // Avg completion is a string, counter not used for display
-  const alertCounter = useCountUp((alertsSummary?.totalWeakTopics || 0) + (alertsSummary?.totalInterventions || 0));
 
   useEffect(() => {
     fetchData();
@@ -64,12 +59,22 @@ const TeacherDashboard = () => {
       try {
         const analyticsResponse = await classService.getClassAnalytics('all');
         const data = analyticsResponse.data || {};
-        const totalStudents = new Set(classesData.flatMap(c => c.students.map(s => s._id || s))).size;
-        data.totalStudentsFromAPI = totalStudents;
+        // Use backend-computed totalStudents (correctly deduplicated)
+        // Fall back to summing studentCounts from class list
+        if (!data.totalStudents) {
+          data.totalStudents = new Set(
+            classesData.flatMap(c => (c.students || []).map(s => String(s._id || s)))
+          ).size;
+        }
+        data.totalStudentsFromAPI = data.totalStudents;
         setAnalytics(data);
       } catch (analyticsErr) {
         console.error('Failed to load aggregate analytics', analyticsErr);
-        setAnalytics({});
+        // Still compute totalStudents from the classes list we already have
+        const fallbackCount = new Set(
+          classesData.flatMap(c => (c.students || []).map(s => String(s._id || s)))
+        ).size;
+        setAnalytics({ totalStudentsFromAPI: fallbackCount, totalStudents: fallbackCount });
       }
 
       try {
@@ -125,18 +130,22 @@ const TeacherDashboard = () => {
     return 'red';
   };
 
-  const totalStudents = analytics?.totalStudentsFromAPI !== undefined
-    ? analytics.totalStudentsFromAPI
-    : classes.reduce((sum, c) => sum + (c.studentCount || 0), 0);
-  const avgCompletion =
-    classes.filter(c => c.studentCount > 0).length > 0
-      ? Math.round(
-          classes
-            .filter(c => c.studentCount > 0)
-            .reduce((sum, c) => sum + (c.avgCompletion || 0), 0) /
-          classes.filter(c => c.studentCount > 0).length
-        )
-      : 0;
+  const totalStudents = analytics?.totalStudentsFromAPI
+    ?? analytics?.totalStudents
+    ?? classes.reduce((sum, c) => sum + (c.studentCount || 0), 0);
+
+  const avgCompletion = (() => {
+    // Prefer the per-class avgCompletion values returned by /teaching endpoint
+    const classesWithStudents = classes.filter(c => (c.studentCount || 0) > 0);
+    if (classesWithStudents.length > 0) {
+      return Math.round(
+        classesWithStudents.reduce((sum, c) => sum + (c.avgCompletion || 0), 0) /
+        classesWithStudents.length
+      );
+    }
+    // Fallback: overall averageConfidence from analytics
+    return analytics?.averageProgress ?? 0;
+  })();
   const weakTopics = analytics?.weakTopics || [];
 
   const TruncatedTick = ({ x, y, payload }) => {
@@ -161,39 +170,28 @@ const TeacherDashboard = () => {
   };
 
 
-  // Counters keyed by stat index position
-  const statCounters = [studentCounter, classCounter, completionCounter, alertCounter];
-
   const statItems = [
     {
       label: 'Total Students',
       value: totalStudents,
-      displayValue: studentCounter.count,
-      counterRef: studentCounter.ref,
       icon: Users,
       color: 'from-indigo-500/20 to-indigo-600/20',
     },
     {
       label: 'Active Classes',
       value: classes.length,
-      displayValue: classCounter.count,
-      counterRef: classCounter.ref,
       icon: BookOpen,
       color: 'from-cyan-500/20 to-cyan-600/20',
     },
     {
       label: 'Avg Completion',
       value: `${avgCompletion}%`,
-      displayValue: `${avgCompletion}%`,
-      counterRef: null,
       icon: BarChart3,
       color: 'from-violet-500/20 to-violet-600/20',
     },
     {
       label: 'Weak Topics Flagged',
       value: alertsSummary.totalWeakTopics,
-      displayValue: alertCounter.count,
-      counterRef: alertCounter.ref,
       icon: AlertTriangle,
       color: 'from-orange-500/20 to-orange-600/20',
       action: () => {
@@ -257,13 +255,12 @@ const TeacherDashboard = () => {
                   whileHover={{ y: -2 }}
                   onClick={stat.action}
                   className={stat.action ? 'cursor-pointer' : ''}
-                  ref={stat.counterRef}
                 >
                   <div className="card p-6 hover:border-white/[0.12] transition-all duration-300">
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="text-white/50 text-sm font-medium mb-1">{stat.label}</p>
-                        <p className="text-3xl sm:text-4xl font-bold text-slate-50">{stat.displayValue}</p>
+                        <p className="text-3xl sm:text-4xl font-bold text-slate-50">{stat.value}</p>
                       </div>
                       <div
                         className="w-10 h-10 rounded-xl flex items-center justify-center"

@@ -551,10 +551,11 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
             classIds = [classData._id]
         }
 
-        // Get all study sessions and plans for these classes
-        const [sessions, plans] = await Promise.all([
+        // Get all study sessions, plans, and quiz results for these classes
+        const [sessions, plans, classQuizResults] = await Promise.all([
             StudySession.find({ classId: { $in: classIds } }).populate('studentId', 'name email'),
-            StudyPlan.find({ classId: { $in: classIds } })
+            StudyPlan.find({ classId: { $in: classIds } }),
+            QuizResult.find({ classId: { $in: classIds } })
         ])
 
         // Maps for tracking stats
@@ -670,9 +671,20 @@ router.get('/:id/analytics', protect, authorize('teacher'), async (req, res) => 
             avgConfidence: data.confCount > 0 ? Math.round(data.confSum / data.confCount) : 0
         })).sort((a, b) => b.strugglingCount - a.strugglingCount)
 
+        // Build quiz score averages per topic (for Topic Difficulty chart)
+        const quizScoreMap = new Map()
+        classQuizResults.forEach(r => {
+            if (!quizScoreMap.has(r.topicName))
+                quizScoreMap.set(r.topicName, { sum: 0, count: 0 })
+            const q = quizScoreMap.get(r.topicName)
+            q.sum += r.score
+            q.count += 1
+        })
+
         const topicProgressData = Array.from(topicProgressMap.entries()).map(([topic, data]) => ({
             topic,
-            confidence: data.count > 0 ? Math.round(data.confSum / data.count) : 0
+            confidence: data.count > 0 ? Math.round(data.confSum / data.count) : 0,
+            quizScore: quizScoreMap.has(topic) ? Math.round(quizScoreMap.get(topic).sum / quizScoreMap.get(topic).count) : null
         })).sort((a, b) => a.topic.localeCompare(b.topic))
 
         // Merge session stats + plan progress into final student list
