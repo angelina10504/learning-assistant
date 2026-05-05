@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Users, BookOpen, BarChart3, AlertTriangle, Plus, BookMarked, Download, Trophy, Medal, Copy } from 'lucide-react';
+import { Users, BookOpen, BarChart3, AlertTriangle, Plus, BookMarked, Download, Trophy, Medal, Copy, CheckCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 import GlassTooltip from '../../components/ui/GlassTooltip';
@@ -364,95 +364,167 @@ const TeacherDashboard = () => {
               )}
             </div>
           </div>
-
           {/* Right Column */}
           <div className="space-y-8">
-            {/* Class-Wide Weak Areas */}
+          {/* Class-Wide Weak Areas */}
             <div>
-              <h2 className="text-xl font-bold text-slate-50 mb-4">Class-Wide Weak Areas</h2>
-              {weakTopics.length === 0 ? (
-                <div className="card p-6 text-center flex flex-col items-center">
-                  <AlertTriangle className="w-12 h-12 text-slate-500 mb-3" />
-                  <h3 className="text-base font-bold text-slate-300 mb-1">All topics looking strong!</h3>
-                  <p className="text-slate-500 text-sm">No weak areas detected across your classes.</p>
-                </div>
-              ) : (
-                <motion.div
-                  className="space-y-3"
-                  variants={containerVariants}
-                  initial="initial"
-                  animate="animate"
-                >
-                  {weakTopics.slice(0, 5).map((topic, idx) => (
-                    <motion.div
-                      key={idx}
-                      variants={itemVariants}
-                      className="card p-4 border-l-4 border-red-500"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <h4 className="font-semibold text-slate-50 text-sm">{topic.name}</h4>
-                        <Badge color="red" className="text-xs">
-                          {topic.strugglingCount || 0} struggling
-                        </Badge>
-                      </div>
-                      <ProgressBar
-                        value={topic.avgConfidence || 0}
-                        max={100}
-                        color="red"
-                        height="h-1"
-                      />
-                      <p className="text-xs text-slate-400 mt-2">
-                        Avg Confidence: {topic.avgConfidence || 0}%
-                      </p>
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-slate-50">Class-Wide Weak Areas</h2>
+                <span className="text-white/30 text-xs">Sorted by lowest mastery</span>
+              </div>
+              {(() => {
+                // Prefer flagged weakTopics; fall back to bottom topics from topicProgressData
+                const topicData = analytics?.topicProgressData || [];
+                const flagged = analytics?.weakTopics || [];
+
+                // Build display list: flagged topics first, then bottom topics by confidence
+                let displayTopics = [];
+                if (flagged.length > 0) {
+                  displayTopics = flagged.slice(0, 5).map(t => ({
+                    name: t.name,
+                    confidence: t.avgConfidence || 0,
+                    strugglingCount: t.strugglingCount || 0,
+                    flagged: true,
+                  }));
+                } else if (topicData.length > 0) {
+                  displayTopics = [...topicData]
+                    .sort((a, b) => (a.confidence || 0) - (b.confidence || 0))
+                    .slice(0, 5)
+                    .map(t => ({
+                      name: t.topic,
+                      confidence: t.confidence || 0,
+                      quizScore: t.quizScore,
+                      flagged: false,
+                    }));
+                }
+
+                if (displayTopics.length === 0) {
+                  return (
+                    <div className="card p-6 text-center flex flex-col items-center">
+                      <CheckCircle className="w-10 h-10 text-emerald-500/60 mb-3" />
+                      <h3 className="text-base font-bold text-slate-300 mb-1">No topic data yet</h3>
+                      <p className="text-slate-500 text-sm">Data will appear as students complete sessions.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <motion.div className="space-y-3" variants={containerVariants} initial="initial" animate="animate">
+                    {displayTopics.map((topic, idx) => {
+                      const conf = topic.confidence;
+                      const color = conf >= 70 ? '#34d399' : conf >= 40 ? '#fbbf24' : '#f87171';
+                      const borderColor = conf >= 70 ? 'border-emerald-500' : conf >= 40 ? 'border-amber-500' : 'border-red-500';
+                      const label = conf >= 70 ? 'On Track' : conf >= 40 ? 'Needs Work' : 'Struggling';
+                      return (
+                        <motion.div key={idx} variants={itemVariants} className={`card p-4 border-l-4 ${borderColor}`}>
+                          <div className="flex items-start justify-between mb-2">
+                            <h4 className="font-semibold text-slate-50 text-sm truncate max-w-[60%]" title={topic.name}>{topic.name}</h4>
+                            <div className="flex items-center gap-2">
+                              {topic.strugglingCount > 0 && (
+                                <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'rgba(248,113,113,0.15)', color: '#fca5a5' }}>
+                                  {topic.strugglingCount} struggling
+                                </span>
+                              )}
+                              <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: `${color}20`, color }}>
+                                {label}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="relative h-2 bg-white/[0.06] rounded-full overflow-hidden mb-2">
+                            <motion.div
+                              className="h-full rounded-full"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${conf}%` }}
+                              transition={{ duration: 0.6, delay: idx * 0.08 }}
+                              style={{ background: `linear-gradient(90deg, ${color}88, ${color})` }}
+                            />
+                            <div className="absolute top-0 bottom-0 w-px bg-white/20" style={{ left: '70%' }} />
+                          </div>
+                          <div className="flex justify-between text-xs text-slate-500">
+                            <span>Avg Mastery: <span style={{ color }} className="font-semibold">{conf}%</span></span>
+                            {topic.quizScore != null && <span>Quiz Score: <span className="text-slate-300 font-semibold">{topic.quizScore}%</span></span>}
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </motion.div>
+                );
+              })()}
             </div>
 
             {/* Top Performers */}
             <div>
-              <h2 className="text-xl font-bold text-slate-50 mb-4">Top Performers</h2>
-              {(!analytics?.topPerformers || analytics.topPerformers.length === 0) ? (
-                <div className="card p-6 text-center flex flex-col items-center">
-                  <Trophy className="w-12 h-12 text-slate-500 mb-3" />
-                  <h3 className="text-base font-bold text-slate-300 mb-1">No data yet</h3>
-                  <p className="text-slate-500 text-sm">Performance data will appear as students study.</p>
-                </div>
-              ) : (
-                <motion.div
-                  className="space-y-2"
-                  variants={containerVariants}
-                  initial="initial"
-                  animate="animate"
-                >
-                  {(analytics?.topPerformers || []).slice(0, 5).map((student, idx) => {
-                    const medalColors = ['text-yellow-500', 'text-gray-400', 'text-orange-500', 'text-slate-300', 'text-slate-400'];
-                    return (
-                      <motion.div
-                        key={idx}
-                        variants={itemVariants}
-                        className="card p-4 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3 flex-1">
-                          {idx < 3 ? (
-                            <Medal className={`w-5 h-5 ${medalColors[idx]}`} />
-                          ) : (
-                            <span className="text-lg">&#11088;</span>
-                          )}
-                          <div className="flex-1">
-                            <p className="font-semibold text-slate-50 text-sm">{student.name}</p>
-                            <p className="text-xs text-slate-400">
-                              {student.topicsCompleted || 0} topics &bull; {student.timeStudied || 0}h studied
-                            </p>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-slate-50">Top Performers</h2>
+                <span className="text-white/30 text-xs">Across all classes</span>
+              </div>
+              {(() => {
+                // Use analytics.students (sorted by progress desc) — always populated from enrolled students
+                const allStudents = (analytics?.students || []).filter(s => (s.progress || 0) > 0);
+                const top5 = allStudents.slice(0, 5);
+
+                if (top5.length === 0) {
+                  return (
+                    <div className="card p-6 text-center flex flex-col items-center">
+                      <Trophy className="w-10 h-10 text-slate-500/60 mb-3" />
+                      <h3 className="text-base font-bold text-slate-300 mb-1">No progress yet</h3>
+                      <p className="text-slate-500 text-sm">Leaderboard appears once students start studying.</p>
+                    </div>
+                  );
+                }
+
+                const medals = ['🥇', '🥈', '🥉'];
+                const medalBg = [
+                  'rgba(234,179,8,0.08)', 'rgba(156,163,175,0.08)', 'rgba(234,88,12,0.08)',
+                  'rgba(255,255,255,0.03)', 'rgba(255,255,255,0.03)',
+                ];
+                const medalBorder = [
+                  'rgba(234,179,8,0.25)', 'rgba(156,163,175,0.20)', 'rgba(234,88,12,0.20)',
+                  'rgba(255,255,255,0.06)', 'rgba(255,255,255,0.06)',
+                ];
+
+                return (
+                  <motion.div className="space-y-2" variants={containerVariants} initial="initial" animate="animate">
+                    {top5.map((student, idx) => {
+                      const prog = student.progress || 0;
+                      const lastActiveStr = student.lastActive
+                        ? (() => {
+                            const days = Math.floor((Date.now() - new Date(student.lastActive)) / 86400000);
+                            return days === 0 ? 'Today' : days === 1 ? '1d ago' : `${days}d ago`;
+                          })()
+                        : 'Never';
+                      return (
+                        <motion.div
+                          key={idx}
+                          variants={itemVariants}
+                          className="card p-4"
+                          style={{ background: medalBg[idx], borderColor: medalBorder[idx] }}
+                        >
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="text-xl w-7 text-center flex-shrink-0">{medals[idx] || `#${idx + 1}`}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-slate-50 text-sm truncate">{student.name}</p>
+                              <p className="text-xs text-slate-400">{student.sessionCount || 0} sessions · last active {lastActiveStr}</p>
+                            </div>
+                            <span className="font-bold text-lg" style={{
+                              color: prog >= 70 ? '#34d399' : prog >= 40 ? '#fbbf24' : '#f87171'
+                            }}>{prog}%</span>
                           </div>
-                        </div>
-                        <p className="font-bold text-indigo-400 text-sm">{student.progress || 0}%</p>
-                      </motion.div>
-                    );
-                  })}
-                </motion.div>
-              )}
+                          <div className="relative h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                            <motion.div
+                              className="h-full rounded-full"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${prog}%` }}
+                              transition={{ duration: 0.7, delay: idx * 0.1 }}
+                              style={{ background: `linear-gradient(90deg, #6366f1, #22d3ee)` }}
+                            />
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </motion.div>
+                );
+              })()}
             </div>
           </div>
         </div>

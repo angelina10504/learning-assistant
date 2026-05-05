@@ -503,30 +503,88 @@ const ClassDetail = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
             >
-              <h2 className="text-xl font-bold text-slate-50 mb-6">Topic Progress Overview</h2>
-              <div className="overflow-x-auto">
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={topicProgressData}>
-                    <defs>
-                      <linearGradient id="colorConfidence" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                    <XAxis dataKey="topic" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
-                    <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
-                    <Tooltip content={<GlassTooltip />} />
-                    <Area
-                      type="monotone"
-                      dataKey="confidence"
-                      stroke="#6366f1"
-                      fillOpacity={1}
-                      fill="url(#colorConfidence)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-50">Topic Progress Overview</h2>
+                  <p className="text-white/40 text-xs mt-1">Average mastery confidence vs quiz score per topic</p>
+                </div>
+                {topicProgressData.length > 0 && (
+                  <div className="flex items-center gap-4 text-xs text-white/50">
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm inline-block" style={{ background: 'linear-gradient(90deg,#6366f1,#818cf8)' }} />Confidence</span>
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm inline-block" style={{ background: 'linear-gradient(90deg,#22d3ee,#06b6d4)' }} />Quiz Score</span>
+                    <span className="flex items-center gap-1.5"><span className="w-6 border-t border-dashed border-amber-400/60 inline-block" />Proficiency (70%)</span>
+                  </div>
+                )}
               </div>
+
+              {topicProgressData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-white/30">
+                  <p className="text-sm">No topic data yet — students need to complete sessions first</p>
+                </div>
+              ) : (() => {
+                // Sort topics by confidence desc so strongest topics are at top
+                const sorted = [...topicProgressData].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+                return (
+                  <div className="space-y-3">
+                    {sorted.map((t, i) => {
+                      const conf = t.confidence || 0;
+                      const quiz = t.quizScore ?? null;
+                      const confColor = conf >= 70 ? '#34d399' : conf >= 40 ? '#fbbf24' : '#f87171';
+                      const quizColor = quiz === null ? null : quiz >= 70 ? '#34d399' : quiz >= 40 ? '#fbbf24' : '#f87171';
+                      const shortName = t.topic.length > 28 ? t.topic.slice(0, 26) + '…' : t.topic;
+                      return (
+                        <div key={i} className="group">
+                          {/* Topic label + scores */}
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-white/70 text-xs font-medium truncate max-w-[45%]" title={t.topic}>{shortName}</span>
+                            <div className="flex items-center gap-3 text-xs">
+                              <span style={{ color: confColor }} className="font-semibold">{conf}% mastery</span>
+                              {quiz !== null && <span style={{ color: quizColor }} className="font-semibold">{quiz}% quiz</span>}
+                            </div>
+                          </div>
+                          {/* Confidence bar */}
+                          <div className="relative h-3 bg-white/[0.06] rounded-full overflow-hidden mb-1">
+                            <motion.div
+                              className="h-full rounded-full"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${conf}%` }}
+                              transition={{ duration: 0.7, delay: i * 0.05, ease: 'easeOut' }}
+                              style={{ background: `linear-gradient(90deg, ${confColor}99, ${confColor})` }}
+                            />
+                            {/* 70% proficiency marker */}
+                            <div className="absolute top-0 bottom-0 w-px bg-amber-400/50" style={{ left: '70%' }} />
+                          </div>
+                          {/* Quiz score bar (only if data exists) */}
+                          {quiz !== null && (
+                            <div className="relative h-2 bg-white/[0.04] rounded-full overflow-hidden">
+                              <motion.div
+                                className="h-full rounded-full opacity-70"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${quiz}%` }}
+                                transition={{ duration: 0.7, delay: i * 0.05 + 0.1, ease: 'easeOut' }}
+                                style={{ background: `linear-gradient(90deg, ${quizColor}66, ${quizColor})` }}
+                              />
+                              <div className="absolute top-0 bottom-0 w-px bg-amber-400/30" style={{ left: '70%' }} />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {/* Legend below */}
+                    <div className="flex items-center gap-1 pt-3 mt-1 border-t border-white/[0.05]">
+                      <div className="flex-1 text-right pr-2">
+                        <span className="text-[10px] text-white/20">0%</span>
+                      </div>
+                      <div className="flex-1 text-center">
+                        <span className="text-[10px] text-amber-400/50">← 70% proficiency threshold →</span>
+                      </div>
+                      <div className="flex-1 text-left pl-2">
+                        <span className="text-[10px] text-white/20">100%</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </motion.div>
 
             {/* Students Section */}
@@ -586,7 +644,7 @@ const ClassDetail = () => {
                             <span className="text-slate-400">Mastery Progress</span>
                             <span className="text-slate-200 font-medium">{Math.round(student.progress)}%</span>
                           </div>
-                          <ProgressBar progress={student.progress} size="sm" color="indigo" />
+                          <ProgressBar value={student.progress} size="sm" color="indigo" />
 
                           <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-white/[0.06]">
                             <div>
@@ -1099,70 +1157,93 @@ const ClassDetail = () => {
               </motion.div>
             </div>
 
-            {/* ROW 3: Student Performance Table + Class Progress Over Time */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-              {/* Left: Student Performance Table (sortable) */}
-              <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-                <h3 className="text-lg font-bold text-white mb-1">Student Performance</h3>
-                <p className="text-white/40 text-xs mb-5">All students sorted by mastery score</p>
-                {students.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr>
-                          <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold">Student</th>
-                          <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold">Mastery</th>
-                          <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold">Quiz Avg</th>
-                          <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold">Sessions</th>
-                          <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold">Last Active</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...students].sort((a, b) => (b.progress || 0) - (a.progress || 0)).map((student, idx) => {
-                          const mastery = student.progress || 0;
-                          const masteryColor = mastery >= 80 ? '#34d399' : mastery >= 60 ? '#818cf8' : mastery >= 40 ? '#fbbf24' : '#f87171';
-                          const masteryTier = mastery >= 80 ? 'Mastered' : mastery >= 60 ? 'Proficient' : mastery >= 40 ? 'Developing' : mastery > 0 ? 'Emerging' : 'Not Started';
-                          const lastActiveStr = student.lastActive
-                            ? (() => {
-                                const days = Math.floor((Date.now() - new Date(student.lastActive).getTime()) / 86400000);
-                                return days === 0 ? 'Today' : days === 1 ? '1d ago' : `${days}d ago`;
-                              })()
-                            : 'Never';
-                          return (
-                            <tr key={student.id || idx}
-                              className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors"
-                              style={{ background: idx % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
-                              <td className="py-2.5 px-3">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-7 h-7 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-xs font-bold shrink-0">
-                                    {student.name?.charAt(0)}
-                                  </div>
-                                  <span className="text-white text-sm font-medium truncate max-w-[100px]">{student.name}</span>
+            {/* ROW 3: Student Performance Table — Full Width Landscape */}
+            <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Student Performance</h3>
+                  <p className="text-white/40 text-xs mt-0.5">All students sorted by mastery score</p>
+                </div>
+                <span className="text-white/30 text-xs">{students.length} students</span>
+              </div>
+              {students.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/[0.06]">
+                        <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold w-[22%]">Student</th>
+                        <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold w-[16%]">Mastery</th>
+                        <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold w-[22%]">Progress</th>
+                        <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold w-[10%]">Quiz Avg</th>
+                        <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold w-[10%]">Sessions</th>
+                        <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold w-[10%]">Topics Done</th>
+                        <th className="text-left py-2 px-3 text-white/40 text-xs uppercase tracking-wider font-semibold w-[10%]">Last Active</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...students].sort((a, b) => (b.progress || 0) - (a.progress || 0)).map((student, idx) => {
+                        const mastery = student.progress || 0;
+                        const masteryColor = mastery >= 80 ? '#34d399' : mastery >= 60 ? '#818cf8' : mastery >= 40 ? '#fbbf24' : mastery > 0 ? '#f87171' : 'rgba(255,255,255,0.3)';
+                        const masteryTier = mastery >= 80 ? 'Mastered' : mastery >= 60 ? 'Proficient' : mastery >= 40 ? 'Developing' : mastery > 0 ? 'Emerging' : 'Not Started';
+                        const lastActiveStr = student.lastActive
+                          ? (() => {
+                              const days = Math.floor((Date.now() - new Date(student.lastActive).getTime()) / 86400000);
+                              return days === 0 ? 'Today' : days === 1 ? '1d ago' : `${days}d ago`;
+                            })()
+                          : 'Never';
+                        return (
+                          <tr key={student.id || idx}
+                            className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors"
+                            style={{ background: idx % 2 === 1 ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
+                            {/* Student */}
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400 text-xs font-bold shrink-0">
+                                  {student.name?.charAt(0)}
                                 </div>
-                              </td>
-                              <td className="py-2.5 px-3">
-                                <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: `${masteryColor}22`, color: masteryColor, border: `1px solid ${masteryColor}44` }}>
-                                  {masteryTier}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3 text-white/70 text-sm">{Math.round(student.confidence || 0)}%</td>
-                              <td className="py-2.5 px-3 text-white/70 text-sm">{student.sessionCount || 0}</td>
-                              <td className="py-2.5 px-3 text-white/50 text-xs">{lastActiveStr}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-12">
-                    <p className="text-white/30 text-sm">No students enrolled yet</p>
-                  </div>
-                )}
-              </motion.div>
+                                <span className="text-white text-sm font-medium truncate max-w-[120px]">{student.name}</span>
+                              </div>
+                            </td>
+                            {/* Mastery badge */}
+                            <td className="py-2.5 px-3">
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: `${masteryColor}22`, color: masteryColor, border: `1px solid ${masteryColor}44` }}>
+                                {masteryTier}
+                              </span>
+                            </td>
+                            {/* Progress bar inline */}
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
+                                  <div className="h-full rounded-full transition-all" style={{ width: `${mastery}%`, background: masteryColor }} />
+                                </div>
+                                <span className="text-white/50 text-xs w-8 text-right shrink-0">{mastery}%</span>
+                              </div>
+                            </td>
+                            {/* Quiz avg */}
+                            <td className="py-2.5 px-3 text-white/70 text-sm">{Math.round(student.confidence || 0)}%</td>
+                            {/* Sessions */}
+                            <td className="py-2.5 px-3 text-white/70 text-sm">{student.sessionCount || 0}</td>
+                            {/* Topics done */}
+                            <td className="py-2.5 px-3 text-white/70 text-sm">{student.topicsCompleted || 0}</td>
+                            {/* Last active */}
+                            <td className="py-2.5 px-3 text-white/50 text-xs whitespace-nowrap">{lastActiveStr}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <p className="text-white/30 text-sm">No students enrolled yet</p>
+                </div>
+              )}
+            </motion.div>
 
-              {/* Right: Student Progress Distribution */}
+            {/* ROW 4: Progress Distribution + Engagement Status + Needs Attention */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+              {/* Progress Distribution */}
               <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
                 <h3 className="text-lg font-bold text-white mb-1">Progress Distribution</h3>
                 <p className="text-white/40 text-xs mb-5">How many students fall into each progress band</p>
@@ -1181,13 +1262,13 @@ const ClassDetail = () => {
                     else buckets[3].count++;
                   });
                   return (
-                    <ResponsiveContainer width="100%" height={260}>
+                    <ResponsiveContainer width="100%" height={220}>
                       <BarChart data={buckets} margin={{ top: 10 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                        <XAxis dataKey="range" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} />
-                        <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '12px' }} allowDecimals={false} />
+                        <XAxis dataKey="range" stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} />
+                        <YAxis stroke="rgba(255,255,255,0.3)" style={{ fontSize: '11px' }} allowDecimals={false} />
                         <Tooltip content={<GlassTooltip />} formatter={(v) => [`${v} students`, 'Count']} />
-                        <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={44}>
+                        <Bar dataKey="count" radius={[8, 8, 0, 0]} barSize={40}>
                           {buckets.map((b, i) => (
                             <Cell key={i} fill={b.color} />
                           ))}
@@ -1199,6 +1280,88 @@ const ClassDetail = () => {
                   <p className="text-white/40 text-center py-8">No student data yet</p>
                 )}
               </motion.div>
+
+              {/* Engagement Status Donut */}
+              <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
+                <h3 className="text-lg font-bold text-white mb-1">Engagement Status</h3>
+                <p className="text-white/40 text-xs mb-4">Breakdown of student activity levels</p>
+                {(() => {
+                  const now = new Date();
+                  const oneWeek = 7 * 24 * 60 * 60 * 1000;
+                  const oneMonth = 30 * 24 * 60 * 60 * 1000;
+                  let activeWeek = 0, activeMonth = 0, dormant = 0, neverStarted = 0;
+                  students.forEach(s => {
+                    if (!s.lastActive || s.sessionCount === 0) { neverStarted++; return; }
+                    const diff = now - new Date(s.lastActive);
+                    if (diff <= oneWeek) activeWeek++;
+                    else if (diff <= oneMonth) activeMonth++;
+                    else dormant++;
+                  });
+                  const segments = [
+                    { label: 'Active this week', value: activeWeek, color: '#34d399' },
+                    { label: 'Active this month', value: activeMonth, color: '#60a5fa' },
+                    { label: 'Dormant', value: dormant, color: '#fbbf24' },
+                    { label: 'Never started', value: neverStarted, color: '#f87171' },
+                  ].filter(s => s.value > 0);
+                  if (segments.length === 0) return <p className="text-white/30 text-sm text-center py-6">No students enrolled yet</p>;
+                  return (
+                    <div className="flex flex-col items-center gap-5">
+                      <PieChart width={150} height={150}>
+                        <Pie data={segments} dataKey="value" cx={72} cy={72} innerRadius={44} outerRadius={66} paddingAngle={3}>
+                          {segments.map((s, i) => <Cell key={i} fill={s.color} />)}
+                        </Pie>
+                        <Tooltip formatter={(v, n) => [`${v} students`, n]} contentStyle={{ background: 'rgba(15,15,30,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', fontSize: '12px' }} />
+                      </PieChart>
+                      <div className="flex flex-col gap-2 w-full">
+                        {segments.map((s, i) => (
+                          <div key={i} className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.color }} />
+                              <span className="text-white/60 text-xs">{s.label}</span>
+                            </div>
+                            <span className="text-white font-bold text-sm">{s.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </motion.div>
+
+              {/* Needs Attention */}
+              <motion.div className="card p-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }}>
+                <h3 className="text-lg font-bold text-white mb-1">Needs Attention</h3>
+                <p className="text-white/40 text-xs mb-4">Students with no study sessions yet</p>
+                {(() => {
+                  const atRisk = students
+                    .filter(s => !s.sessionCount || s.sessionCount === 0)
+                    .slice(0, 7);
+                  if (atRisk.length === 0) return (
+                    <div className="flex flex-col items-center justify-center py-8 gap-2">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-400/60" />
+                      <p className="text-emerald-400/80 text-sm font-medium">All students have started!</p>
+                    </div>
+                  );
+                  return (
+                    <div className="space-y-2">
+                      {atRisk.map((s, i) => {
+                        const initial = (s.name || 'S')[0].toUpperCase();
+                        return (
+                          <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl" style={{ background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.15)' }}>
+                            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: 'rgba(248,113,113,0.2)', color: '#f87171' }}>{initial}</div>
+                            <span className="text-white/80 text-sm flex-1 truncate">{s.name}</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ background: 'rgba(248,113,113,0.15)', color: '#fca5a5' }}>Not started</span>
+                          </div>
+                        );
+                      })}
+                      {students.filter(s => !s.sessionCount || s.sessionCount === 0).length > 7 && (
+                        <p className="text-white/30 text-xs text-center mt-2">+{students.filter(s => !s.sessionCount || s.sessionCount === 0).length - 7} more not started</p>
+                      )}
+                    </div>
+                  );
+                })()}
+              </motion.div>
+
             </div>
           </div>
 
